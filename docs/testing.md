@@ -1,0 +1,282 @@
+# Pruebas
+
+Qué se prueba y cómo, para demostrar que el código funciona.
+
+## Qué se prueba
+
+- Cada fase añade pruebas de lo que construye.
+- El «se comprueba» de cada fase de `docs/spec.md` se convierte, siempre que se pueda, en una prueba de
+  Playwright que hace lo mismo que haría la persona.
+- Las reglas de «Qué hace» y los permisos de «Quién puede hacer qué» de `docs/spec.md` son la lista de lo
+  que hay que probar: cada una tiene su prueba siempre que se pueda, la más sencilla que la demuestre. El
+  nombre de la prueba cita el código de su regla (`[USU-01]`), para saber qué regla se rompe si falla.
+- Las pruebas de esas reglas y permisos se escriben antes que el código que las cumple, leyendo la
+  especificación y no el código: primero fallan y después se construye hasta que pasan. Es la forma de
+  trabajar, no algo que haya que enseñarme ni preguntarme.
+- La lógica (cálculos, reglas del negocio, validaciones, permisos) se prueba con Vitest, también con datos
+  incorrectos. La agenda y los plazos, con la hora fijada en la prueba, incluidos los cambios de hora.
+- Los permisos se prueban para cada rol: en cada fila de «Quién puede hacer qué», los roles que pueden lo
+  hacen, y los que no reciben «no permitido» sin que cambie nada. Se llama a `src/data/` o a la acción
+  directamente, no a través de la pantalla, porque ocultar un botón no protege.
+- Cada dato protegido tiene una prueba de que otro usuario no puede verlo ni cambiarlo: un Agente, lo de
+  canales que no son suyos; un visitante del chat web, la conversación de otro.
+- Cuando se corrige un fallo de funcionamiento, primero se escribe una prueba que lo reproduce. Los textos,
+  los colores y los detalles visuales no se prueban.
+
+## Cómo
+
+- Vitest, con la prueba junto al código que prueba (`invoice.test.ts`). No admite componentes de servidor
+  asíncronos: esos se prueban con Playwright.
+- `server-only` impide cargar un módulo fuera de Next.js: la configuración de Vitest lo sustituye por un
+  módulo vacío, para poder probar `src/data/` y `src/server/`.
+- Cada archivo de pruebas de Vitest trabaja con su propia base Postgres en memoria (PGlite, el mismo motor que la
+  demo), copia vacía de una plantilla con las migraciones aplicadas que se prepara una vez por ejecución:
+  `src/test/global-setup.ts` la migra y la guarda en un archivo temporal (`dumpDataDir`), y `src/test/setup.ts` abre
+  con ella una base en memoria para cada archivo (`loadDataDir`, unos 0,4 s, más con el ordenador cargado) y la cierra
+  al terminar. Cada prueba
+  crea solo los datos que necesita, y `emptyDatabase()` (`scripts/lib/testing.ts`) vacía todas las tablas de una vez
+  entre pruebas del mismo archivo. Nunca tocan `data/pglite` ni Supabase: `src/test/env.ts` quita `DATABASE_URL`,
+  `SUPABASE_URL` y `SUPABASE_SECRET_KEY` del entorno. Así las pruebas no dependen unas de otras ni de la demo. Las
+  pruebas usan Better Auth y la base de verdad, así que el tiempo máximo de cada una es de 30 s.
+- Lo propio de Postgres (la búsqueda con `es_unaccent` y `halfvec`, el candado de escritura, la cola con
+  `SKIP LOCKED`, Row Level Security en cada tabla) se prueba contra PGlite. Lo que PGlite no puede demostrar (Supabase
+  es Postgres 17 y PGlite, 18; el pooler; Storage) se comprueba una vez contra un proyecto de Supabase, como pide la
+  fase 8, y en cada publicación con el Security Advisor.
+- El orden de los textos cambia según la base: PGlite (como SQLite antes) ordena byte a byte (mayúsculas antes que
+  minúsculas y las letras con tilde al final), y Supabase ordena según el idioma (`en_US.UTF-8`), así que allí los
+  nombres de los contactos salen en orden alfabético. Las pruebas no deben depender de cómo se ordenan nombres con
+  tildes o con mayúsculas y minúsculas mezcladas.
+- Playwright, en `e2e/` y con Chromium (`pnpm exec playwright install chromium` la primera vez). Arranca él
+  solo (`webServer`) el servidor que simula los servicios externos (`e2e/mocks/`, puerto 3101) y, como
+  recomienda Next.js, la versión compilada de la app (`pnpm build` y `next start`) tres veces, cada una con su propia
+  base integrada: la demo en el puerto 3100 con `data/e2e-pglite` (migraciones, demo de la peluquería cargada con
+  `pnpm seed --sector=peluqueria`, porque las pruebas se escribieron para ella aunque la demo por defecto sea la clínica
+  de fisioterapia, dos usuarios propios de las pruebas, la cita del recordatorio,
+  `e2e/support/create-agenda-fixtures.ts`, y un cliente que recibió un envío por correo con su enlace de baja,
+  `e2e/support/create-campaign-fixtures.ts`, porque sin dirección pública la app no ofrece el correo), una instalación vacía
+  en el 3102 con `data/e2e-fresh-pglite`, para el asistente de arranque, y la demo del restaurante en el 3103 con
+  `data/e2e-restaurante-pglite` (`pnpm seed --sector=restaurante`), solo para la agenda por aforo (proyecto
+  `restaurant`, `e2e/restaurant/`; sus pruebas entran por el formulario y el servidor tiene la clave de prueba de
+  OpenRouter simulado en su entorno). Las bases se preparan antes de compilar (`e2e/support/prepare-databases.mjs`,
+  que solo borra esas tres carpetas de `data/`) y los secretos de prueba (también el código de instalación que la
+  versión compilada pide en el asistente) se generan en cada ejecución: nunca toca `data/pglite` ni `.env.local`. Los
+  servidores de las pruebas llevan `SUPABASE_URL` y `SUPABASE_SECRET_KEY` vacías (`next start` también lee
+  `.env.local`, pero lo que ya está en el entorno manda), así que los archivos van al disco y nunca a un Storage real.
+  Como cada base integrada solo la abre un proceso, las preparaciones que la usan (`create-e2e-users.ts`,
+  `create-agenda-fixtures.ts`, `create-assistant-fixtures.ts`, `create-campaign-fixtures.ts`) terminan antes de que
+  arranquen los servidores.
+- Se entra siempre por el formulario, como una persona: el inicio de sesión de Better Auth no responde por HTTP
+  (`src/server/auth.ts`). En Vitest, las pruebas usan `auth.api.*`, como las Server Actions.
+- Las pruebas de Playwright van de una en una, porque comparten las bases de datos de esos servidores.
+- Respuestas de la IA en Playwright: la app de las pruebas espera `REPLY_DEBOUNCE_MS` (2 s, en
+  `e2e/support/env.ts`) en vez de 4–8 s, lo justo para que tres mensajes escritos seguidos en el chat web caigan en
+  la misma respuesta. Las pruebas esperan la respuesta ejecutando además la cola con `/api/cron/tick`
+  (`e2e/support/engine.ts`), salvo `webchat-background-reply.spec.ts`, que nunca la llama para demostrar que la
+  respuesta llega sola ([MOT-15]). Cada prueba crea sus propios agentes, chats web y textos únicos
+  (`e2e/support/names.ts`), y cada visitante del chat es un navegador nuevo con su propia IP. La forma de las
+  pantallas que usan (textos, roles y nombres accesibles) está en los ayudantes de `e2e/support/` (`channels.ts`,
+  `widget.ts`, `inbox.ts`, `simulator.ts`, `team.ts`, `whatsapp.ts`, `knowledge.ts`, `agenda.ts` y `email.ts`), para
+  cambiarla en un solo sitio.
+- En Vitest, los tiempos de la IA (pausas, esperas, resúmenes) se prueban con la hora fijada: el motor recibe
+  `now`, y cuando una función de `src/data/` usa la hora real solo se falsea `Date`
+  (`vi.useFakeTimers({ toFake: ["Date"] })`), nunca los temporizadores, que usa la base de datos.
+- La agenda (fase 5): el motor de disponibilidad es una función pura y se prueba sin base de datos, con la hora fijada,
+  en los dos cambios de hora de Madrid (25-10-2026 y 28-03-2027), aforo, márgenes, antelación, ausencias y bloqueos
+  (`src/server/booking/availability.test.ts`). El servicio de citas se prueba contra la base de verdad, también con
+  reservas lanzadas a la vez para el último hueco (`service.test.ts`). `src/server/booking/test-helpers.ts` crea
+  negocios de prueba (una peluquería, un negocio por aforo, recursos y servicios) para las pruebas de otras partes. Las
+  acciones de la Agenda y de su configuración se prueban por rol con `Date` falseado. La demo de la agenda se
+  comprueba para los nueve sectores y varios días de carga (también en los cambios de hora) en
+  `scripts/lib/seed-bookings.test.ts`: el motor acepta cada cita de la demo.
+- En la versión compilada los límites de peticiones están activos y todas las pruebas salen del mismo
+  ordenador: cada prueba envía su propia IP en `X-Forwarded-For` (`e2e/support/test.ts`), así no se estorban,
+  y dos pruebas demuestran que los límites existen.
+- Vitest excluye `e2e/` en su configuración, porque por defecto recogería también los `.spec.ts` de
+  Playwright.
+- Lo que no es código también tiene prueba cuando es una regla: `project-config.test.ts` (configuración de Next.js y
+  Vercel), `project-docs.test.ts` (el README con sus usuarios de prueba, la lista de puesta en marcha, la plantilla de
+  contrato y las skills con su puente, [ARR-22]–[ARR-24], [CUM-09]) y `scripts/lib/env-example.test.ts`
+  (`.env.example`, [ARR-04]). Solo comprueban que está lo que la regla pide, no la redacción.
+- Las pruebas no dependen unas de otras ni del orden en que se ejecutan.
+- Datos inventados y usuarios de prueba: los del seed (ver `docs/conventions.md`). Las pruebas nunca se
+  ejecutan contra una base de datos con datos reales (tampoco la de Supabase de producción): si la del
+  proyecto ya los tiene, antes se separan desarrollo y producción, como dice `docs/security.md`.
+- Los servicios externos nunca se llaman de verdad: ni los de pago (IA, OCR) ni los demás. En Vitest,
+  `src/test/setup.ts` hace fallar cualquier `fetch` a otra máquina, así que una prueba que olvida su `fetch`
+  falso falla en vez de llamar al servicio real.
+  - En Vitest, cada cliente de `src/lib/<servicio>/` recibe un `fetch` falso con la respuesta de la
+    prueba. Para OpenRouter, `src/test/fake-openrouter.ts` trae ese `fetch` (guarda cada llamada), las
+    respuestas documentadas (chat, catálogo con un ejemplo de cada exclusión) y una clave de prueba; el código
+    del servidor lo recibe con `fetchImpl` (por ejemplo, `runAgent(input, { fetchImpl })`).
+  - En Playwright, un servidor simulado (`e2e/mocks/`) responde por Meta, OpenRouter, Google, Microsoft,
+    Mistral, Telegram, YCloud e Instagram, y la app apunta a él con sus variables de URL base (`OPENROUTER_BASE_URL`,
+    `META_GRAPH_BASE_URL`, `GOOGLE_OAUTH_BASE_URL`, `GOOGLE_API_BASE_URL`, `MS_LOGIN_BASE_URL`,
+    `MS_GRAPH_BASE_URL`, `MISTRAL_BASE_URL`, `TELEGRAM_API_BASE_URL`, `YCLOUD_API_BASE_URL` e
+    `INSTAGRAM_GRAPH_BASE_URL`).
+  - OpenRouter simulado (`e2e/mocks/routes/openrouter.mjs`): solo responde a las claves de prueba de
+    `e2e/mocks/test-keys.json`; su catálogo tiene modelos de cuatro proveedores y uno de cada exclusión; da los
+    proveedores de cada modelo y la lista sin retención de datos (Whisper está en ella, Voxtral no); el chat
+    contesta de forma fija con el nombre del agente, el canal y lo que escribió el cliente, llama a
+    `transferir_a_humano` cuando el cliente pide «una persona» (argumentos en `e2e/mocks/openrouter-scenarios.json`)
+    y devuelve tokens y coste que crecen con cada mensaje; las notas de voz reciben una transcripción fija. Cada prueba puede forzar errores con `mock.stub`.
+    Desde la fase 12: «no me mandéis más (mensajes)» llama a `dar_de_baja` de todo y «no quiero (más) publicidad,
+    ofertas o novedades», de publicidad; «no quiero (más / los) avisos o recordatorios» llama a
+    `anotar_permiso_avisos` con acepta = false; después de cada una, una confirmación corta.
+  - Conocimiento en el OpenRouter simulado (fase 4): los embeddings son una «bolsa de palabras» fija
+    (`e2e/mocks/routes/bag-of-words.mjs`: sin tildes ni palabras vacías, cada palabra repartida en las 1536
+    posiciones con sha256), así un texto se parece a otro en la medida en que comparten palabras. `POST /rerank`
+    ordena por palabras compartidas. En el chat, si el prompt ya trae «# Conocimiento encontrado para este mensaje»
+    («Buscar siempre») responde con él; si se le ofrece `buscar_conocimiento`, la llama con lo último que escribió el
+    cliente y después responde con la frase del fragmento [1] que más palabras comparte y «(Fuente: título, pág.
+    N)»; con `SIN_RESULTADOS` dice que no lo sabe y ofrece una persona. Un resumen de documento son sus dos primeras
+    frases. Todas las respuestas empiezan igual que las demás («Soy … Me has escrito: «…»»). Como el modelo simulado
+    siempre busca cuando tiene la herramienta, un agente con `buscar_conocimiento` hace dos llamadas por respuesta
+    (los de la demo la tienen).
+  - Citas en el OpenRouter simulado (fase 5, `e2e/mocks/routes/booking.mjs`): solo si al agente se le ofrecen
+    `listar_servicios`, `consultar_disponibilidad` y `crear_cita` y el cliente escribe una fecha «AAAA-MM-DD» (o
+    responde a una oferta del propio simulado). Entonces reserva como un cliente: lista los servicios, consulta los
+    huecos de ese día y ofrece los sugeridos, cada uno con su «[inicio]» para que la prueba lo lea; «Me va bien la
+    primera» (o la segunda, o una hora) llama a `crear_cita` con ese hueco y responde con la confirmación de la
+    herramienta (y su pregunta por los avisos, si la trae, [HER-15]), o con el error y las alternativas. «Confirmo … el AAAA-MM-DD a las HH:MM …» reserva directamente.
+    Los ayudantes de la agenda (fechas de prueba lejos de las citas de la demo, un agente con las herramientas de citas,
+    «Probar», el calendario, la ficha, arrastrar, los recordatorios y los correos de `data/outbox`) están en
+    `e2e/support/agenda.ts`. La cita del recordatorio se crea «hace diez días» para mañana antes de arrancar
+    (`e2e/support/create-agenda-fixtures.ts`), porque una cita creada durante la prueba no tendría recordatorio sin
+    esperar de verdad. La demo trae los recordatorios encendidos (fase 12): la prueba de los recordatorios deja uno
+    solo, por correo «1 semana antes», cuenta solo los correos con su asunto y, al terminar, vuelve a poner los de la
+    demo (`DEMO_REMINDERS`).
+  - Envíos (fase 14): en Vitest, con el WhatsApp y el bot de demo y el correo guardado en una carpeta temporal, la
+    hora se pasa a cada ronda (`runCampaigns({ now })`), así que el ritmo por minuto, las horas de envío, el límite del
+    portfolio en 24 horas y la parada por fallos se prueban sin esperar; un «failed» de WhatsApp se aplica con
+    `applyWhatsAppStatuses()` y su trabajo de siguiente canal se corre a mano. En Playwright, la prueba de envíos pone
+    las horas de envío de 00:00 a 23:59 para que salga a cualquier hora de la ejecución, y lanza la cola con
+    `triggerTick()` hasta ver el resultado.
+  - Envíos automáticos y repetidos (fase 15), siempre con la hora fijada: cuándo toca cada uno son funciones puras
+    (`nextRuleRun()` y `missedRun()` de `src/server/campaigns/rules.ts`), probadas sin base en `rules.test.ts`, también
+    en el cambio de hora del 25 de octubre de 2026 y con una hora que el reloj se salta en primavera.
+    `src/server/campaigns/automatic.test.ts` corre la ronda con `runCampaigns({ now })` sobre la peluquería de
+    `createHairdresser()` y sus citas, y pone a mano la próxima vez de cada uno (`nextRunAt`) para hacer como que las
+    rondas de los días anteriores ya pasaron o que la app estuvo parada: el de después de la cita sale una vez por cita
+    y no a quien ya tiene otra; el mensual, a quien tiene la etiqueta en ese momento, espera al envío anterior y no
+    recupera las veces perdidas; el semanal sigue a su hora tras el cambio de hora. Quién puede hacer qué y cambiar,
+    pausar, activar y borrar, en `src/data/campaign-rules.test.ts`. En Playwright, `e2e/demo/campaign-rules.spec.ts`
+    solo recorre las pantallas (el de la demo, activo y con su próxima vez; uno mensual creado, pausado, activado y
+    borrado; lo que ven el supervisor y el agente) y nunca espera a que salga ninguno.
+  - Documentos del conocimiento hechos en código, sin binarios en el repositorio: en Playwright,
+    `e2e/support/knowledge-files.ts` (un PDF de texto de 120 páginas con un dato solo en la 112 y un Markdown con
+    encabezados; las preguntas evitan las palabras clave de traspaso de la plantilla, como «novia»); en Vitest,
+    `src/test/fixtures/knowledge/long-pdf.ts` (120 páginas, dato solo en la 87) y los ayudantes de
+    `src/server/knowledge/test-helpers.ts` (OpenRouter falso con la misma bolsa de palabras, DOCX, XLSX, PDF y ZIP
+    de prueba). Mistral OCR solo se prueba en Vitest, con su `fetch` falso.
+  - Meta en Vitest (fase 3): `src/test/fixtures/whatsapp/` guarda los avisos reales de
+    `docs/integracion-whatsapp-mensajes.md` §16 (texto, nota de voz, imagen, documento, estados enviado, entregado,
+    leído y fallido 131047, contacto solo con BSUID, duplicado, avisos de cuenta y de plantillas, reacción y su
+    retirada, ubicación, tipo no admitido y los dos cambios de identidad) con `signWebhook()` para firmarlos con el
+    App Secret de prueba; `fake-meta.ts` es la Graph API falsa (`fakeMetaFetch`, `connectedNumberRoutes`,
+    `metaError(código)` y las respuestas documentadas) y `memory-storage.ts`, un almacén de archivos en memoria. Las
+    funciones de `src/data/whatsapp*.ts` reciben `{ fetchImpl, baseUrl: FAKE_META_BASE_URL }` como último argumento.
+  - Meta simulado en Playwright (`e2e/mocks/routes/meta.mjs`, datos en `meta-data.json`): responde a todo lo que la
+    app pide a la Graph API con cualquier versión (`/v26.0/…`): `debug_token` y `/{APP_ID}/subscriptions` solo con el
+    token de app, el resto con `Bearer`; números, WABA, `subscribed_apps` (rechaza `override_callback_uri`, [WA-15]),
+    registro, códigos de verificación, plantillas paginadas, crear una plantilla (`POST /{WABA}/message_templates`,
+    que la deja «PENDING», fase 12), envío (texto de hasta 4.096 caracteres y plantillas
+    aprobadas con todas sus variables, si no 132000/132001), leídos y «escribiendo…», subida y descarga de archivos.
+    Regla de números: cualquier id de 15 cifras que empieza por 2 es un número, su WABA es el mismo con un 1 delante
+    y se muestra como +1 555-XXX-XXXX; está PENDING hasta registrarlo. `POST /meta/dashboard/apps/:appId/webhooks`
+    hace de la persona que pulsa «Verificar y guardar» en el panel de Meta (Meta llama a la app con el token). Cada
+    prueba conecta su propio número (`e2e/support/whatsapp-meta.ts` genera números, clientes, wamids y avisos firmados
+    a partir de los mismos archivos de `src/test/fixtures/whatsapp/`) y deja su canal desactivado o desconectado al
+    terminar. Las pantallas de WhatsApp se recorren con los ayudantes de `e2e/support/whatsapp.ts`.
+  - Telegram en Vitest (fase 9): `src/test/fixtures/telegram/` es la Bot API falsa (`fakeTelegramFetch`,
+    `connectedBotRoutes`, `tgOk`, `tgError` y las respuestas documentadas) con avisos realistas (texto, nota de voz,
+    foto, documento, grupo); los tokens de prueba se montan al ejecutarse, para que ningún texto del repositorio
+    parezca una clave. Las funciones de `src/data/telegram.ts` reciben `{ fetchImpl, baseUrl }` como último argumento;
+    las acciones se prueban con el `fetch` global sustituido y `TELEGRAM_API_BASE_URL`.
+  - Instagram en Vitest (fase 16): `src/test/fixtures/instagram/` es la API falsa de Instagram (guarda cada llamada,
+    con la cuenta, el cliente y los tokens de prueba montados al ejecutarse) y firma los avisos como Meta. En Playwright,
+    `e2e/mocks/routes/instagram.mjs` hace de Instagram (con un eco firmado de cada envío, como hace Meta) y de su panel
+    («Verify and save», el mensaje de un cliente, una respuesta escrita desde la app de Instagram, un mensaje borrado);
+    los ayudantes están en `e2e/support/instagram.ts`. En `e2e/demo/instagram.spec.ts`, cada prueba que conecta una
+    cuenta usa una propia y la deja desconectada; recorre lo que solo se ve de punta a punta: el asistente con la
+    comprobación de Meta, la respuesta del agente en un solo mensaje, la de una persona desde la bandeja, el eco «Desde
+    Instagram», el aviso sin firma, «Desconectar» y la cuenta de la demo ([IG-01], [IG-02], [IG-03], [IG-05], [IG-06],
+    [IG-10], [IG-13]). Lo demás de Instagram (la ventana de 24 h, los borrados, el perfil, la renovación del token,
+    la misma cuenta dos veces, los errores) solo en Vitest. El canal de cada conversación en la bandeja ([BAN-17]) se
+    comprueba además con los cuatro canales de la demo en `e2e/demo/inbox-channels.spec.ts`: la pastilla de cada fila
+    y el filtro «Canal» con su chip, buscando a los clientes de la demo y sin contar filas, porque otras pruebas añaden
+    canales y conversaciones.
+  - YCloud en Vitest (fase 9): `src/test/fixtures/ycloud/` es la API falsa (`fakeYCloudFetch`, `ycloudRoutes`,
+    `ycloudAccount`, que recuerda las direcciones de avisos que se le piden y da a cada una su secreto) con avisos
+    realistas (texto, nota de voz, foto, estado, lo escrito desde el móvil, plantilla revisada) y `signedEvent`, que
+    los firma como YCloud. Las claves de prueba se montan al ejecutarse. Las funciones de `src/data/ycloud.ts`
+    reciben `{ fetchImpl, baseUrl }` como último argumento.
+  - YCloud en Playwright (`e2e/mocks/routes/ycloud.mjs`): cualquier clave «yc<9 cifras><letras>» es una cuenta con
+    un número; «REVOCADA» y «SINNUMERO» en las letras dan una clave rechazada y una cuenta sin números. Como la app
+    corre en `http://localhost`, no se crea dirección de avisos ([YC-04]): la recepción y el envío se prueban en
+    Vitest. Ayudantes en `e2e/support/ycloud.ts`.
+  - WhatsApp por código QR (fase 9): **ninguna prueba abre una conexión con WhatsApp**. La sesión se prueba con una
+    conexión falsa (`src/test/fixtures/whatsapp-qr/`: `fakeQrSockets` y `FakeQrSocket`, que emite lo que emitiría
+    WhatsApp —código, escaneo, apertura, cierres con su motivo, mensajes, estados— y anota lo que se le pide) y un
+    supervisor propio de la prueba (`createQrSupervisor({ openSocket })` + `setQrSupervisorForTests`). El
+    normalizador (`normalize.ts`) no importa la librería y se prueba con mensajes de ejemplo. En Playwright solo se
+    comprueba el aviso y la casilla del asistente: nunca se pulsa «Generar código QR», que abriría una conexión real.
+  - El `request` de Playwright lleva la sesión del `storageState` del archivo: para comprobar que algo no se sirve
+    sin sesión, la prueba crea un contexto sin cookies (`playwright.request.newContext({ storageState: { cookies: [],
+    origins: [] } })`).
+  - En e2e la app corre en `http://localhost`: sin dirección pública con HTTPS, el asistente no intenta suscribir la
+    app de Meta sola y va por el camino manual ([WA-16]); ese intento automático solo se prueba en Vitest.
+  - La demo de Playwright arranca sin clave de OpenRouter. Una prueba que necesita IA pide el fixture
+    `openRouterKey` (`e2e/support/test.ts`): guarda la clave como el propietario desde Ajustes › IA y la quita al
+    terminar, aunque la prueba falle, para que las demás sigan viendo la instalación sin IA.
+  - Los servidores de correo (IMAP y SMTP) se simulan en Vitest sustituyendo su conexión
+    (`src/server/channels/email/test-fakes/`). Un correo de prueba no trae la cabecera Authentication-Results del servidor
+    que lo recibe, así que su remitente sale «no verificado» ([COR-25]); `verifiedEmail()` y `receivedWith()` de
+    `src/server/channels/email/test-helpers.ts` la ponen encima, como haría ese servidor. En Playwright, los buzones
+    simulados tampoco la añaden: la prueba la escribe en el correo cuando la necesita.
+  - Google y Microsoft simulados en Playwright (fase 6, `e2e/mocks/routes/google.mjs` y `microsoft.mjs`, con lo común en
+    `google-microsoft-mail.mjs`): las pantallas de consentimiento (se puede desmarcar un permiso), los tokens con PKCE,
+    la API de Gmail y Microsoft Graph de cada buzón, que las pruebas manejan como un guion: llega un correo, una persona
+    responde desde su programa, se revoca el acceso… y después leen lo que hizo la app (borradores, envíos con sus
+    cabeceras e hilo, etiquetas). Cada prueba usa sus propios clientes y direcciones (`e2e/support/email-mailboxes.ts`),
+    así que nunca comparten buzones ni contactos. Los ayudantes de las pantallas de correo están en `e2e/support/email.ts`.
+  - Herramientas HTTP en Playwright (fase 7, `e2e/mocks/routes/http-tools.mjs`): una pequeña API de tienda en el
+    simulador y el paso del modelo simulado que llama a la herramienta que el cliente nombra. La app de las pruebas corre
+    con `ALLOW_LOCAL_HTTP_TOOLS=true` (y `E2E_ALLOW_BASE_URL_OVERRIDES=true`, sin el cual la versión compilada no arranca
+    con ella) para poder llamar al simulador por `http` en este ordenador ([HER-14]).
+  - Avisos push y app instalable (fase 7): Playwright comprueba el manifiesto, el service worker y los iconos sin
+    sesión, y la suscripción y los dispositivos de Mi cuenta con el permiso de notificaciones concedido al navegador; el
+    envío con `web-push` se prueba en Vitest con su transporte falso, sin llamar a ningún servicio de push.
+  - Las respuestas y los avisos simulados copian los reales de `docs/integracion-*.md` (por ejemplo, los
+    avisos de WhatsApp de `docs/integracion-whatsapp-mensajes.md`), firmas incluidas.
+  - Agentes internos (fase 10): sus reglas se prueban en `src/data/internal-agents.test.ts` para los cinco roles,
+    con el OpenRouter falso del conocimiento (`knowledgeOpenRouter`, que busca y responde) pasado a
+    `askAssistant(…, { fetchImpl })`; el tope del día, con un `RateLimiter` de la prueba. Las acciones de las
+    pantallas, en `src/app/(app)/asistentes/actions.test.ts`. Que un agente interno no puede ser el agente de un
+    canal nuevo ([INT-03]) se prueba además en cada asistente de canal (`telegram.test.ts`, `ycloud.test.ts` y
+    `whatsapp-qr.test.ts`, en `src/data/`). En Playwright, `e2e/demo/internal-agents.spec.ts`
+    recorre la fase con tres personas (propietario, agente y supervisor, cada una en su navegador) y con el PDF de
+    120 páginas de `e2e/support/knowledge-files.ts` en una base interna: la respuesta cita el documento y la página
+    112. `e2e/demo/assistant-history.spec.ts` pulsa «Cargar más» y «Cargar mensajes anteriores» con las
+    conversaciones que `e2e/support/create-assistant-fixtures.ts` deja escritas para el administrador de la demo
+    (53 conversaciones y una de 204 mensajes: preguntarlas una a una tardaría minutos, por el tope de 20 por
+    minuto). Los ayudantes de sus pantallas están en `e2e/support/assistants.ts`. La demo trae un agente interno
+    para todo el equipo, así que «Asistentes» está en el menú del propietario, el administrador, el supervisor y
+    el agente de la demo. Las dos pruebas de Playwright comprueban además lo que solo se ve en un navegador: que
+    lo recién preguntado sigue ahí al salir a otra sección y volver con «Atrás» (sin recargar), que abrir una
+    conversación no cambia la lista y que una antigua abierta por su dirección aparece en ella. Lo que lee quien
+    pregunta cuando la IA falla (y si sale «Reintentar») se prueba en `src/app/(app)/asistentes/_lib/failures.test.ts`
+    y en las acciones.
+  - Registros sin datos ([SEG-14]): `src/server/errors.test.ts` comprueba que un fallo inesperado de una Server
+    Action sale sin la consulta ni sus valores, y que `redirect()` y `notFound()` reales de Next.js pasan
+    intactos; `src/server/redact.test.ts`, que de la traza solo quedan las líneas de código.
+  - Subida al conocimiento donde manda el límite de Vercel: `src/app/(app)/conocimiento/_lib/upload.test.ts` pasa
+    a la ruta `{ VERCEL: "1" }` en lugar de cambiar la variable de entorno, que haría negarse a la base integrada.
+  - Cómo aprovechan el sitio las pantallas (`e2e/demo/screen-layout.spec.ts`): es la única prueba que cambia el
+    tamaño de la ventana (portátil, pantalla ancha y móvil) sobre una misma conversación de la demo. Comprueba lo que
+    no se puede probar sin navegador: que el cuadro de escribir está a la vista sin scroll de página, que la
+    conversación conserva sus 480 px y la ficha del contacto pasa a panel lateral cuando no caben las dos, y que en
+    el móvil la Agenda deja «Nueva cita» y lleva «Bloquear hueco» al menú «Más acciones». Lo que estas pantallas
+    calculan sin navegador tiene su prueba de Vitest junto al código (los grupos de Ajustes y de Ayuda, las columnas
+    de los servicios, los grupos de herramientas, las etiquetas del registro de actividad y el resumen de
+    Diagnóstico).
+- Cuando el proyecto esté en GitHub, se propone ejecutar las pruebas automáticamente en cada subida.

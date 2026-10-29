@@ -1,0 +1,2115 @@
+# Especificación
+
+Qué se construye. Sirve para comprobar, sin saber programar, que lo construido hace lo que tiene que hacer.
+
+**Estado:** aprobada (2026-09-26, encargo del propietario del proyecto). Ampliación de las fases 11 a 15 (encargo
+del 2026-10-16: demo de fisioterapia, calendario, recordatorios, permisos y envíos): aprobada el 2026-10-16.
+
+## Qué problema resuelve y para quién
+
+DominIA Agentes es una plataforma de atención al cliente con agentes de IA que se instala una vez por negocio
+(una clínica de fisioterapia, una peluquería, un despacho…), cada una con su propia base de datos. El negocio atiende
+en un solo sitio lo que le llega por WhatsApp, por correo, por el chat de su web y por Telegram: los agentes de
+IA contestan, dan información fiable sacada de sus documentos, reservan citas en su agenda y pasan la
+conversación a una persona del equipo cuando hace falta. La app recuerda las citas a los clientes y envía los avisos
+y la publicidad que el negocio programa a los contactos que elige, siempre con su permiso y a un ritmo que no pone en
+riesgo sus cuentas. Además, los agentes internos responden al propio equipo
+con los documentos del negocio (manuales, procedimientos, tarifas), sin que esos documentos lleguen nunca a un
+cliente. La usan el dueño y su equipo, cada uno con su rol, y todo se configura desde la pantalla, sin tocar
+código. Quien clona el repositorio puede probarlo todo con una demo, sin configurar nada.
+
+## Qué hace
+
+Cada línea es una regla que se puede comprobar: «Cuando pasa esto, la app hace esto otro».
+
+Cada regla lleva delante un código entre corchetes que no cambia y que citan las pruebas (`docs/testing.md`); si
+una regla se quita, su código no se reutiliza. En estas reglas, «persona» es alguien del equipo del negocio y
+«cliente» es quien escribe al negocio. Los detalles técnicos de cada servicio externo (direcciones, campos,
+límites y sus fuentes) están en `docs/integracion-whatsapp.md`, `docs/integracion-whatsapp-mensajes.md`,
+`docs/integracion-openrouter.md`, `docs/integracion-correo.md`, `docs/integracion-mistral-ocr.md`,
+`docs/integracion-telegram.md`, `docs/notificaciones-push.md`, `docs/busqueda-hibrida.md` y
+`docs/plataforma-despliegue.md`. Las tablas donde se guarda cada cosa están en `docs/modelo-de-datos.md`.
+
+### Arranque y demo
+
+- [ARR-01] Cuando alguien clona el repositorio y ejecuta `pnpm install && pnpm dev` sin configurar nada, la app
+  arranca en local con la demo cargada y se entra con los usuarios de prueba del README.
+- [ARR-02] Cuando `pnpm dev` no encuentra `.env.local` o la base de datos, antes de arrancar prepara la
+  instalación: crea `.env.local` con secretos aleatorios (clave de cifrado, secreto de sesiones y secreto del
+  cron) y la demo activada, crea la base de datos integrada en `data/pglite` (Postgres dentro de la propia app, sin
+  cuentas ni Docker), la pone al día (migraciones) y carga la demo.
+- [ARR-03] Cuando esa preparación se repite (`pnpm dev` otra vez o `pnpm run setup`) y ya estaba hecha, no
+  cambia nada: no regenera secretos, no duplica datos y no borra nada. Se lanza con `run` porque `pnpm setup`
+  es una orden de pnpm que cambia el PATH del ordenador.
+- [ARR-04] `.env.example` explica cada variable, sin valores secretos, y sus valores de ejemplo para local
+  funcionan tal cual.
+- [ARR-05] Cuando la demo está activa, todas las pantallas del panel muestran el aviso «Modo demo».
+- [ARR-06] La demo es una clínica de fisioterapia («Fisioterapia Movimiento») con horario, servicios, profesionales,
+  contactos, agentes ya asignados a canales, un chat web real y un WhatsApp y un correo de demo. Hasta la fase 11 era
+  la peluquería, que sigue disponible con `pnpm seed --sector=peluqueria` ([ARR-10]).
+- [ARR-07] Las citas de la demo se colocan en fechas relativas al día en que se carga (días pasados, hoy y los
+  próximos), así que la agenda nunca aparece vacía ni caducada.
+- [ARR-08] Las conversaciones de la demo son realistas: incluyen un audio con su transcripción, imágenes, al
+  menos un traspaso a persona y citas creadas por la IA.
+- [ARR-09] Los usuarios de prueba cubren los cinco roles, con email y contraseña conocidos, y aparecen en una
+  tabla del README (email, contraseña y rol).
+- [ARR-10] `pnpm seed --sector=<sector>` carga la demo de ese sector en vez de la de fisioterapia. Los sectores son
+  `peluqueria`, `clinica-dental`, `fisioterapia`, `restaurante`, `taller`, `academia`, `inmobiliaria`, `tienda` y
+  `otro`; con uno que no existe, el comando falla, lista los válidos y no toca la base de datos.
+- [ARR-11] Los canales de WhatsApp y correo de la demo están marcados «Demo»: nunca llaman a Meta, Google,
+  Microsoft ni a un servidor de correo; lo que reciben llega por el simulador y lo que «envían» solo se guarda.
+- [ARR-12] La base de conocimiento de la demo viene ya procesada, con los embeddings (la versión en números de
+  cada fragmento, que permite buscar por significado) guardados en el repositorio: al poner la clave de
+  OpenRouter, la búsqueda por significado funciona al momento, sin volver a procesar nada. Sin clave va solo
+  por texto ([ARR-14]): los embeddings guardados evitan procesar los documentos, pero cada búsqueda necesita
+  calcular el embedding de la pregunta, y eso pide la clave. Corrige a propósito la frase del encargo según la
+  cual la búsqueda vectorial de la demo funcionaba sin clave.
+- [ARR-13] `pnpm seed:embeddings` vuelve a calcular esos embeddings con el modelo por defecto (necesita clave) y
+  actualiza el archivo del repositorio.
+- [ARR-14] Sin clave de OpenRouter todo funciona salvo la IA: se ve el aviso «Añade tu clave de OpenRouter» con
+  enlace a Ajustes > IA, los agentes no responden (los mensajes esperan en la bandeja a una persona), los audios
+  no se transcriben y la búsqueda de conocimiento es solo por texto.
+- [ARR-15] Cuando se pone la clave en Ajustes > IA, la IA se activa al momento; si se pone en `.env.local`, al
+  reiniciar la app. Si hay clave en los dos sitios, se usa la de Ajustes.
+- [ARR-16] `pnpm db:reset` borra todo y deja la demo como recién instalada.
+- [ARR-17] `pnpm db:fresh` borra todo y deja una instalación vacía, sin demo ni usuarios: al abrir la app
+  aparece el asistente de arranque.
+- [ARR-18] La demo solo se carga en local al preparar la instalación o con una orden expresa (`pnpm seed`,
+  `pnpm db:reset`); nunca al arrancar una app publicada.
+- [ARR-19] Cuando `pnpm seed` se lanza contra la base de datos de un negocio real (una instalación sin demo), se
+  niega y no toca nada.
+- [ARR-20] Los usuarios de prueba se pueden borrar desde Ajustes > Usuarios, como cualquier otro.
+- [ARR-21] `/api/health` responde si la app y la base de datos funcionan, sin mostrar datos privados.
+- [ARR-22] El README está en español y explica: qué es y requisitos (versiones de Node y pnpm), arranque rápido,
+  usuarios de prueba, cómo poner la clave de OpenRouter, el recorrido de la demo (simulador, `/widget-demo`,
+  bandeja y traspaso, asignar agentes, agenda, recordatorios, envíos y conocimiento), comandos y variables de entorno, cómo conectar
+  WhatsApp, Gmail, Outlook e IMAP reales (resumen y enlace a `docs/`), la publicación en Vercel (con Supabase para la
+  base de datos, los archivos y el cron), el paso a un negocio real con `pnpm db:fresh` y la solución de problemas. Se
+  pone al día en cada fase.
+- [ARR-23] Las guías de `docs/` están en español, con huecos para capturas, enlazadas desde el README y visibles
+  en la app ([AJU-17]). Cada una cubre al menos:
+  - Publicación (`docs/guia-despliegue.md`): Vercel con Supabase (base de datos, archivos y cron); más adelante, el
+    VPS.
+  - WhatsApp (`docs/guia-whatsapp.md`): el negocio crea su portfolio de Meta y da acceso de administrador a
+    quien lo implanta; la app de Meta va en ese portfolio; el número deja de funcionar en la app del móvil;
+    los límites sin verificar la empresa y cuándo conviene verificarla; la tarjeta (método de pago) y la
+    publicación de la app; el tope de 15 apps por persona, por el que conviene que el negocio administre su
+    propia app y verifique su empresa cuando pueda; la prueba con el número de prueba de Meta; crear plantillas
+    desde la app (utilidad o marketing, y qué hace que Meta las pase a marketing); y los problemas frecuentes.
+  - Correo (`docs/guia-correo.md`): Google Cloud y Microsoft Entra paso a paso (incluida la caducidad del
+    secreto de cliente de Microsoft) y los datos de un servidor IMAP/SMTP.
+  - Agentes y conocimiento: crear un agente, cargar documentos, webs y preguntas frecuentes, y no subir datos
+    de clientes.
+  - Agenda: servicios, recursos, horarios, ausencias y recordatorios (varios por cita, sus botones y el permiso
+    de avisos que necesitan).
+  - Envíos (`docs/guia-envios.md`): los permisos de los clientes y cómo conseguirlos, importar contactos, la
+    plantilla de publicidad, los envíos programados, automáticos y repetidos, el correo del sistema con un servicio de
+    envíos y los registros del dominio que piden Gmail, Outlook y Yahoo (SPF, DKIM y DMARC), las normas (LSSI y datos
+    de salud) y cómo evitar bloqueos de WhatsApp, Telegram y el correo.
+  - Lista de puesta en marcha: de `pnpm db:fresh` a la primera conversación, incluida la privacidad de la
+    cuenta de OpenRouter ([CUM-10]).
+  - Plantilla de contrato de encargo del tratamiento ([CUM-09]).
+- [ARR-24] El proyecto trae estas skills, en `.agents/skills/` con su puente en `.claude/skills/`:
+  - `nuevo-negocio`: datos del negocio, sector, `pnpm db:fresh`, despliegue, arranque y lista de puesta en
+    marcha.
+  - `conectar-whatsapp`: Meta paso a paso (portfolio del negocio, app en ese portfolio, número, usuario del
+    sistema, token, App Secret, publicar la app y método de pago); usa el servidor MCP oficial de Meta
+    «WhatsApp Business Tools» si está disponible.
+  - `conectar-correo`: Google Cloud, Microsoft Entra o IMAP.
+  - `crear-agente`: un agente a partir de la web o de los documentos del negocio.
+  - `desplegar`: publicar la instalación siguiendo la guía de publicación.
+  - `actualizar`: pasar a una versión nueva, siempre con una copia de seguridad antes.
+  - `diagnostico`: averiguar por qué algo no funciona, a partir de Ajustes > Diagnóstico y los documentos de
+    integración.
+
+  Las skills instaladas desde fuera y anotadas en `skills-lock.json` (hoy `frontend-design`, `supabase` y
+  `supabase-postgres-best-practices`) conservan su propio formato y esta regla no las comprueba.
+- [ARR-25] La demo enseña los recordatorios y los envíos sin que salga nada de verdad ([ARR-11], [ENV-14]): el WhatsApp
+  de demo tiene aprobadas las plantillas del modelo de la app ([WA-59]): «Recordatorio de cita», sin el servicio, y
+  «Novedades y publicidad», con su botón de baja, por la que salen los envíos de la demo; en un canal de demo, «Nueva
+  plantilla» la deja aprobada al momento, sin llamar a Meta. Los recordatorios vienen activados; hay contactos con y sin permisos, uno dado de baja, un envío ya hecho con sus
+  resultados, otro programado y un envío automático tras la cita. Cada parte llega con su fase (12, 14 y 15).
+
+### Inicio de sesión, usuarios e invitaciones
+
+- [USU-01] Cuando alguien entra con email y contraseña correctos, llega a la bandeja; si alguno es incorrecto, ve
+  «Email o contraseña incorrectos», sin saber cuál de los dos falla.
+- [USU-02] Cuando alguien abre una página privada sin haber entrado, la app le lleva al inicio de sesión y, al
+  entrar, le devuelve a esa página.
+- [USU-03] No hay registro público: las cuentas solo se crean en el asistente de arranque (el primer
+  propietario), aceptando una invitación o con la demo. Un intento de registro directo se rechaza.
+- [USU-04] Fuera de la demo, tras el primer arranque solo se entra por invitación.
+- [USU-05] Cuando el propietario o un administrador invita a alguien (email, rol y, si es Agente, sus canales),
+  la app le envía un email con un enlace de un solo uso que caduca a los 7 días.
+- [USU-06] Si el correo del sistema no está configurado, la invitación se crea igual y la app muestra el enlace
+  para copiarlo y enviarlo por otro medio.
+- [USU-07] Cuando el invitado abre el enlace, pone su nombre y su contraseña y entra con el rol de la invitación.
+- [USU-08] Cuando el enlace ya se usó, caducó o se revocó, la app lo dice y no crea la cuenta.
+- [USU-09] No se puede invitar a un email que ya tiene cuenta. Las invitaciones pendientes se pueden reenviar o
+  revocar.
+- [USU-10] Cuando alguien pide recuperar su contraseña, la app responde lo mismo exista o no el email; si existe,
+  le envía un enlace de un solo uso que caduca. Al cambiar la contraseña se cierran sus otras sesiones.
+- [USU-11] Cada usuario puede activar la verificación en dos pasos con una app de códigos (TOTP), que le da
+  códigos de recuperación; desde entonces, al entrar se le pide también el código.
+- [USU-12] Cuando en Ajustes > Usuarios se activa «Exigir verificación en dos pasos a propietario y
+  administradores» (desactivado por defecto), esos usuarios no pueden usar la app hasta configurarla.
+- [USU-13] Tras varios intentos fallidos seguidos desde la misma IP o para el mismo email, la app frena los
+  intentos durante un rato, con el mismo mensaje genérico.
+- [USU-14] Cuando se cambia el rol de alguien, se desactiva o se borra, vale desde su siguiente acción: un
+  usuario desactivado o borrado pierde el acceso al momento.
+- [USU-15] Los mensajes, notas y citas de un usuario borrado conservan su nombre como autor.
+- [USU-16] Siempre hay exactamente un propietario. Solo él puede traspasar la propiedad a otro usuario,
+  confirmando con su contraseña: el otro pasa a propietario y él, a administrador.
+- [USU-17] En Ajustes > Usuarios se eligen los canales de cada usuario con rol Agente.
+- [USU-18] En «Mi cuenta» cada usuario cambia su nombre, su contraseña, su verificación en dos pasos y sus
+  avisos, y cierra sesión.
+
+### Asistente de arranque
+
+- [ASI-01] Cuando la instalación está vacía (sin usuarios), cualquier página lleva al asistente; cuando ya se
+  terminó, el asistente no se puede abrir.
+- [ASI-02] Paso 1: crear el propietario (nombre, email y contraseña). Solo funciona mientras no existe ningún
+  usuario: si dos personas lo intentan a la vez, solo una lo consigue. En una instalación publicada pide además el
+  código de instalación (`SETUP_TOKEN`), que solo conoce quien la publica; sin ese código configurado, nadie puede
+  crear el propietario. En local (`pnpm dev`) no se pide.
+- [ASI-03] Paso 2: datos del negocio y sector: Peluquería/Estética, Clínica dental, Clínica/Fisioterapia,
+  Restaurante, Taller, Academia/Clases, Inmobiliaria, Tienda u Otro.
+- [ASI-04] Al elegir sector se cargan datos que luego se pueden editar: terminología, servicios, recursos, modo de
+  agenda, plantilla de agente y preguntas frecuentes. Inmobiliaria y Tienda usan la agenda de «Otro».
+- [ASI-05] Si el sector es Clínica dental o Clínica/Fisioterapia, el asistente avisa de que habrá datos de salud
+  ([CUM-12]).
+- [ASI-06] Paso 3: horario semanal (varios tramos por día), festivos y cierres, y zona horaria (Europe/Madrid por
+  defecto).
+- [ASI-07] Paso 4: clave de OpenRouter con «Probar clave», que pregunta a OpenRouter y dice si es válida, y
+  elección del modelo. Se puede saltar: la app funciona sin IA ([ARR-14]).
+- [ASI-08] Paso 5: primer agente desde la plantilla del sector. Con «Generar desde la web del negocio» y una
+  dirección, la IA lee la web y propone instrucciones y preguntas frecuentes editables; si la web no se puede leer
+  o no hay clave, lo dice y deja la plantilla.
+- [ASI-09] Paso 6: crea un chat web con ese agente activo y permite probarlo ahí mismo.
+- [ASI-10] Paso 7: enlaces a los asistentes para conectar WhatsApp y correo. Al terminar, guarda la fecha de
+  finalización y lleva a la bandeja.
+- [ASI-11] Si se deja a medias, al volver a entrar como propietario sigue en el primer paso pendiente, con lo ya
+  guardado. Solo el propietario puede continuar el asistente.
+
+### Ajustes
+
+- [AJU-01] Negocio: nombre, datos de contacto, dirección, sector, zona horaria, logo y color principal (azul
+  `#3d6df2` por defecto). El nombre, el logo y el color se ven en el panel, la app instalada, el chat web, las
+  páginas legales y los correos del sistema.
+- [AJU-02] Usuarios: lista, invitaciones, roles, canales de cada Agente, desactivar y borrar, y la exigencia de
+  verificación en dos pasos ([USU-12]).
+- [AJU-03] Horario: horario semanal con varios tramos por día, festivos y cierres. Decide qué es «dentro» y
+  «fuera de horario» y limita la agenda ([AGD-05]).
+- [AJU-04] IA: clave de OpenRouter (con «Probar clave»), clave de Mistral OCR (opcional, para PDF escaneados),
+  modelos por defecto de chat, transcripción, embeddings y descripción de imágenes, lista de recomendados, «Sin
+  retención de datos» (ZDR) opcional y «Reordenar resultados» ([CON-16]):
+  - «Reordenar resultados» vale para toda la instalación, está desactivado por defecto y tiene su modelo (por
+    defecto `cohere/rerank-v3.5`). Con ZDR activado solo se ofrecen modelos de reordenación con proveedores
+    sin retención (hoy, solo `qwen/qwen3-reranker-8b`); si el elegido no lo es, la app lo avisa y no reordena.
+  - Si el modelo de transcripción elegido tiene algún proveedor que no está en la lista sin retención de
+    OpenRouter, la app lo avisa junto al campo ([CUM-10]).
+- [AJU-05] Cuando se cambia el modelo de embeddings, la app avisa de que hay que volver a procesar todas las
+  bases de conocimiento y, al confirmar, lo hace ([CON-13]).
+- [AJU-06] Correo del sistema (SMTP), para invitaciones, recuperación de contraseña, avisos, recordatorios y envíos
+  ([ENV-04]): servidor, puerto, seguridad, usuario, contraseña y remitente, con «Enviar correo de prueba». Sin él, la
+  app avisa de que esos correos no salen. La pantalla explica que, para enviar a muchos contactos, conviene un servicio
+  especializado en enviar correos con el dominio del negocio verificado (SPF, DKIM y DMARC, que Gmail, Outlook y Yahoo
+  piden a quien envía mucho), y no la cuenta con la que el negocio trabaja: Microsoft desaconseja usar su correo para
+  envíos masivos, y Google pone topes diarios y puede suspender la cuenta que los supera o envía spam.
+- [AJU-07] Privacidad y legal: textos de privacidad, términos y eliminación de datos, aviso de IA por defecto y
+  plazos de conservación ([CUM-05]).
+- [AJU-08] Notificaciones: qué sucesos avisan (traspaso, conversación nueva —desactivado por defecto—, conversación
+  asignada, canal con error, calidad de WhatsApp, modelo que se retira, cita pendiente de confirmar, [AGD-22], plantilla
+  de WhatsApp rechazada o cambiada de categoría, [WA-60], y envío parado, [ENV-09]) y a quién por defecto.
+- [AJU-09] Tarifas de WhatsApp: precio por mensaje de cada mercado y categoría; se editan aquí y nunca están
+  escritas en el código. Las de la demo van marcadas «ejemplo». Los mensajes gratis no se configuran: una nota
+  explica que Meta marca en cada estado si el mensaje fue gratis ([WA-47]).
+- [AJU-10] Registro de actividad: lo que hacen las personas y la IA, con filtros. Nadie lo puede editar ni borrar
+  a mano.
+- [AJU-11] Diagnóstico: estado de la base de datos y de la cola de trabajo (pendientes, fallidos, última ronda),
+  último aviso recibido por canal, errores recientes, pruebas de conexión (la clave de OpenRouter, el correo de prueba
+  del sistema y la prueba de cada canal conectado: revalidar con Meta, el acceso a Gmail u Outlook y «Probar
+  conexión» de un buzón IMAP/SMTP) y simulador de canales. Empieza con un resumen que dice si todo funciona o
+  cuántas cosas hay que revisar, con una línea por área (base de datos, trabajo en segundo plano, IA, correo del
+  sistema y canales) que lleva a su apartado; los errores recientes de la IA se enseñan ahí sin contar para ese
+  veredicto, porque la lista no caduca.
+- [AJU-12] Cuando se usa el simulador (canal, contacto y tipo de mensaje: texto, audio, imagen o documento), el
+  mensaje entra por el mismo camino que uno real, aparece en la bandeja y la IA responde como lo haría.
+- [AJU-13] Los mensajes del simulador quedan marcados como simulados y sus respuestas nunca salen a Meta, Google,
+  Microsoft ni a un servidor de correo, aunque el canal sea real. Van siempre a un contacto y una conversación propios
+  del simulador: nunca escriben como un cliente real ni en su conversación.
+- [AJU-14] Acerca de: versión de la app y enlaces a las guías de Ayuda ([AJU-17]).
+- [AJU-15] Cuando un ajuste tiene un valor incorrecto, no se guarda y el error se explica junto al campo.
+- [AJU-16] Un campo secreto ya guardado se muestra como «••••1234»; dejarlo vacío al guardar conserva el valor y
+  escribir uno nuevo lo sustituye. Si cambia a dónde se envía (servidor, puerto, seguridad o usuario), hay que
+  volver a escribirlo, y una contraseña nunca se envía sin cifrar.
+- [AJU-17] Ayuda: las guías de [ARR-23] (`docs/guia-*.md` y la lista de puesta en marcha) se ven dentro de la
+  app, con sesión y para cualquier rol, en `/ayuda/<guía>`; van incluidas al compilar, así que no dependen del
+  repositorio. En los asistentes de
+  WhatsApp y de correo, cada «¿Dónde lo encuentro?» muestra ahí mismo un texto corto con dónde está el dato
+  (el de `docs/integracion-whatsapp.md` §2.4 en WhatsApp) y «Ver la guía», que abre su apartado.
+- [AJU-18] Envíos: las horas en que pueden salir los envíos y los envíos automáticos y repetidos (de 9:00 a 21:00 por
+  defecto, en la zona del negocio; es una elección de la app, no una norma oficial; los recordatorios salen a su hora,
+  [AGD-24]); cada cuántos días como mucho recibe un envío un mismo contacto (7 por defecto, [ENV-06]); y el correo: el
+  tope diario del correo del sistema, el del plan del servicio de envíos (100 por defecto, el del plan gratuito más
+  pequeño de los comunes: Brevo da 300 al día, Mailjet 200 y Mailgun 100), y cuántos de ellos pueden ser de envíos, por
+  hora y por día (25 y 75 por defecto). El tope diario cuenta todo lo que sale por el correo del sistema (invitaciones,
+  contraseñas, avisos, recordatorios y envíos), y los envíos dejan siempre el resto para lo demás ([ENV-08]).
+
+### Canales (común)
+
+- [CAN-01] Canales muestra cada canal con su tipo, nombre, estado (borrador, conectando, conectado, error o
+  desactivado), agente activo, IA encendida o apagada, marca «Demo» si lo es y hora del último mensaje recibido.
+- [CAN-02] Puede haber varios canales de cada tipo: WhatsApp, Gmail, Outlook, correo IMAP/SMTP, chat web, Telegram e
+  Instagram (mensajes directos).
+- [CAN-03] Cada canal tiene como máximo un agente activo. Sin agente activo, o con la IA del canal apagada, la IA
+  no contesta y los mensajes esperan en la bandeja a una persona.
+- [CAN-04] Desde la tarjeta del canal se elige el «Agente activo» y se enciende o apaga la IA.
+- [CAN-05] Cambiar el agente activo afecta solo a los mensajes que llegan después; cada mensaje guarda qué agente
+  lo respondió.
+- [CAN-06] Modo pruebas «solo a estos contactos» (números, emails o identificadores): mientras está activo, la IA
+  solo contesta a los de la lista y los demás mensajes esperan a una persona. Se compara solo lo que da el canal
+  (el identificador del visitante, el email del remitente, el BSUID o el número que da WhatsApp), nunca lo que
+  alguien escribe, como el email o el teléfono del formulario del chat web.
+- [CAN-07] Modo de respuesta: «Automático» (la IA envía) o «Borrador para revisar» (la IA deja un borrador que una
+  persona aprueba, edita o descarta). Por defecto, automático en WhatsApp, chat web, Telegram e Instagram, y borrador
+  en correo.
+- [CAN-08] Fuera de horario: «Responder igual» (por defecto) o «No responder fuera de horario» (los mensajes
+  esperan a una persona). Un agente propio para fuera de horario queda preparado, pero no se ofrece.
+- [CAN-09] Cuando llega un aviso de un canal, la app lo procesa en este orden: comprueba la firma, guarda el aviso
+  en bruto, lo pasa a un formato común, busca o crea el contacto y su identidad, guarda el mensaje ignorando
+  duplicados, avisa a la pantalla y programa la respuesta. Contesta enseguida al servicio que avisa: la prueba
+  mide el objetivo de Meta, una mediana de 250 ms o menos y menos del 1 % de respuestas por encima de 1
+  segundo. Un aviso para un número que no es de ningún canal también recibe 200 ([WA-34]). Un carácter que la base de
+  datos no admite nunca hace perder ni bloquea un mensaje: el carácter nulo (NUL) se quita y la mitad suelta de un
+  carácter compuesto (como medio emoji) se guarda como «�».
+- [CAN-10] La app nunca espera a la IA para contestar a un aviso: la IA trabaja después, en segundo plano.
+- [CAN-11] Cuando llega dos veces el mismo mensaje (mismo canal y mismo identificador), se guarda una sola vez y
+  se responde una sola vez.
+- [CAN-12] En WhatsApp, chat web, Telegram e Instagram hay una sola conversación por canal y contacto: si estaba resuelta, se
+  reabre con el siguiente mensaje. En correo hay una conversación por hilo.
+- [CAN-13] Cuando escribe alguien desconocido, se crea el contacto con su identidad en ese canal; si la identidad
+  ya existe, el mensaje va a ese contacto. El teléfono nunca sirve para identificar a nadie.
+- [CAN-14] Lo que ofrece la bandeja en cada conversación depende de lo que admite su canal (audio, imágenes,
+  documentos, plantillas, ventana de 24 h, «escribiendo…», leídos, HTML y borradores): por ejemplo, las
+  plantillas solo aparecen en WhatsApp.
+- [CAN-15] La app revisa cada canal conectado al conectarlo y cada cierto tiempo; si falla, lo pone en «error»
+  con la explicación en español y avisa al propietario y a los administradores.
+- [CAN-16] Un canal desactivado no contesta ni envía, y conserva su historial. Borrar un canal borra también sus
+  conversaciones, con sus mensajes, notas internas y archivos, y no se puede deshacer: la confirmación dice cuántas
+  conversaciones se borran, recuerda que desactivarlo las conserva y pide escribir el nombre del canal. Se quedan los
+  contactos, sus citas (sin el enlace a la conversación) y los costes de la IA, como en la limpieza de [CUM-05]; el
+  registro de actividad anota cuántas se borraron. Si no se puede borrar algún archivo, no se borra el canal y la app
+  pide intentarlo de nuevo. No se deja borrar el canal por el que elige un envío repetido ([ENV-16]).
+- [CAN-17] Las credenciales de cada canal se guardan cifradas, aparte de su configuración no secreta.
+
+### WhatsApp
+
+Un número de WhatsApp se conecta de una de estas tres formas, que elige el negocio (decisión 0026):
+
+- **API oficial de Meta** (Cloud API), con la app de Meta del propio negocio y un token permanente de usuario del
+  sistema. Es la recomendada y la que describen las reglas [WA-01]–[WA-52]. Detalles en
+  `docs/integracion-whatsapp.md` (conexión) y `docs/integracion-whatsapp-mensajes.md` (recepción y envío).
+- **YCloud**, un partner oficial de Meta: la misma API oficial a través de la cuenta de YCloud del negocio, con
+  coexistencia (el número sigue funcionando en la app WhatsApp Business del móvil). Reglas [YC-01]–[YC-11] y
+  `docs/integracion-ycloud.md`.
+- **Código QR**, con Baileys: el número se vincula como un «dispositivo vinculado», igual que WhatsApp Web. No es
+  oficial. Reglas [QR-01]–[QR-12] y `docs/integracion-whatsapp-qr.md`.
+
+Las tres comparten lo común de los canales ([CAN-01]–[CAN-17]) y estas reglas:
+
+- [WA-53] Canales > Añadir muestra las tres formas de conectar WhatsApp, cada una con el logotipo de WhatsApp, su
+  nombre y en qué se diferencia de las otras: «API oficial de Meta» (recomendada), «YCloud · coexistencia» y
+  «Código QR · no oficial». Cada una abre su propio asistente.
+- [WA-54] Cada canal de WhatsApp guarda por qué vía está conectado, y su tarjeta y su panel lo dicen. Las acciones
+  de una vía (por ejemplo, «Validar con Meta») no se pueden usar en un canal de otra.
+- [WA-55] Lo que ofrece la bandeja depende de la vía: la ventana de 24 h, las plantillas y el coste estimado solo
+  existen con la API oficial (Meta o YCloud); por código QR no hay ventana ni plantillas.
+- [WA-56] Un número con conversaciones de siempre (coexistencia o código QR) empieza en modo pruebas, con la lista
+  vacía: la IA no contesta a nadie hasta que el negocio añade contactos a la lista o quita el modo pruebas.
+
+Plantillas, permisos y bajas con la API oficial (Meta o YCloud; por código QR no hay plantillas, [WA-55]):
+
+- [WA-57] El panel de cada número tiene «Plantillas»: la lista de sus plantillas con su estado, su categoría y su
+  idioma, y «Nueva plantilla», que crea una con nombre, idioma, categoría (utilidad o marketing), un texto con los
+  datos que se rellenan solos (nombre del contacto, servicio, día y hora de la cita, profesional y nombre del negocio,
+  cada uno con el ejemplo que pide Meta), encabezado y pie opcionales y botones de respuesta rápida (como mucho 25
+  caracteres cada uno). La app la manda a Meta, o a YCloud, que la pasa a Meta, y la enseña «En revisión» hasta que
+  llega la respuesta ([WA-22]). Las plantillas se siguen editando y borrando en Meta o en YCloud.
+- [WA-58] En las plantillas creadas desde la app, la app recuerda qué dato va en cada hueco, así que al usarlas en un
+  recordatorio o en un envío ya vienen asignados; en las traídas con «Sincronizar plantillas» se asignan a mano, como
+  hasta ahora ([AGD-24]).
+- [WA-59] «Nueva plantilla» trae dos modelos que se pueden cambiar antes de enviarla:
+  - «Recordatorio de cita»: utilidad, solo con los datos de la cita, con los botones «Confirmo» y «Necesito
+    cambiarla» y una caducidad de 1 hora (si Meta no la puede entregar en ese tiempo, ya no la entrega, para que no
+    llegue tarde; se puede poner entre 30 segundos y 12 horas, lo que permite Meta, y vale para todos los mensajes de
+    esa plantilla, [AGD-24]). En los sectores con datos de salud ([CUM-12]) lleva el nombre del contacto, el día, la
+    hora, el profesional y el nombre del negocio, sin el servicio, que puede revelar el tratamiento ([CUM-14]).
+  - «Novedades y publicidad»: marketing, con el nombre del negocio y el botón «No quiero publicidad».
+
+  Mientras se escribe una plantilla de utilidad, la app avisa de lo que hace que Meta la pase a marketing: ofertas,
+  descuentos, recomendar otro servicio o invitar a reservar, un texto igual para todos que no habla de una cita
+  concreta del cliente, o un texto que es casi solo datos que se rellenan. En los sectores con datos de salud, avisa
+  también de no poner síntomas, enfermedades ni tratamientos ([CUM-14]).
+- [WA-60] Cuando Meta rechaza una plantilla, la aprueba en otra categoría de la pedida (una pedida como utilidad que
+  Meta considera marketing se aprueba como marketing, sin rechazarla) o le cambia la categoría después (también
+  cuando lo anuncia el día antes), la app lo enseña con el motivo en español y avisa al propietario y a los
+  administradores ([AJU-08]). Una plantilla de utilidad que pasa a marketing deja de servir para los recordatorios:
+  salen por el siguiente canal marcado ([AGD-24]) hasta que se elige otra, y su configuración lo avisa.
+- [WA-61] Ninguna plantilla sale sin el permiso que corresponde ([CTO-09]): las de utilidad, a quien no ha dicho que no
+  quiere «Avisos de sus citas» (se da por hecho); las de marketing, a quien tiene el de «Novedades y publicidad» y no
+  se ha dado de baja de ella por WhatsApp. También desde la bandeja ([WA-43]): sin el permiso, la app lo explica y deja
+  anotarlo, diciendo cómo lo dio el cliente, antes de enviarla; una de marketing, además, solo si tiene un botón de
+  baja ([ENV-06]). Meta exige el permiso del cliente antes de enviar cualquier plantilla y deja que el negocio decida
+  cómo conseguirlo; para los avisos de sus citas, el propietario decidió darlo por hecho al ser cliente (decisión
+  0030), y la política de privacidad dice cómo dejar de recibirlos. Para la publicidad, nunca se da por hecho.
+- [WA-62] Cuando el cliente pulsa el botón de baja de una plantilla (el «No quiero publicidad» del modelo, o el que se
+  eligió en una plantilla traída, [ENV-06]), o para la publicidad del negocio
+  desde el propio WhatsApp (Meta lo avisa), queda de baja de novedades y publicidad por WhatsApp ([CTO-10]) y queda
+  anotado en sus consentimientos con el origen; con el botón, además, recibe una confirmación. Si Meta rechaza un
+  envío porque el cliente paró la publicidad, también. Si después la reanuda desde WhatsApp, se anota, pero la baja solo
+  se quita si el cliente lo pide ([CTO-08]).
+- [WA-63] Para escribir por primera vez por WhatsApp a un contacto que nunca ha escrito a ese número (por ejemplo, uno
+  importado), la plantilla va a su teléfono. Su identidad de WhatsApp se crea en ese contacto ([CTO-03]) cuando Meta
+  confirma el envío con su identificador, no antes; si después escribe, su mensaje llega a su conversación. Si Meta
+  avisa de que no se pudo entregar a ese teléfono, no se crea nada y el motivo dice «WhatsApp no pudo entregarlo:
+  puede que ese teléfono no tenga WhatsApp o que use una versión antigua». Si otro contacto ya tiene un WhatsApp con
+  ese teléfono (por ejemplo, un niño con el de su madre), no se envía por WhatsApp (se pasa al siguiente canal marcado)
+  y se avisa del posible duplicado ([CTO-04]). Una
+  identidad creada así queda «sin confirmar» y la bandeja lo marca: por si el teléfono tenía una errata, mientras lo
+  esté la IA de esa conversación solo puede actuar sobre la cita del recordatorio al que se responde ([AGD-32]), no
+  puede ver otras citas, crear citas nuevas ni guardar datos del contacto (sí darle de baja si lo pide, [HER-16]) y,
+  si le piden más, ofrece una persona, como con un remitente no verificado ([COR-25]). Una persona del equipo la confirma desde la conversación. El teléfono sigue sin servir para
+  reconocer a nadie ([CAN-13]).
+
+Reglas de la API oficial de Meta:
+
+- [WA-01] Canales > Añadir > WhatsApp abre un asistente; cada campo tiene «¿Dónde lo encuentro?», con el texto
+  corto y el enlace a su apartado de la guía de WhatsApp dentro de la app ([AJU-17]).
+- [WA-02] Paso 0: aviso de que el número dejará de funcionar en la app WhatsApp del móvil (usar uno nuevo o uno
+  que el negocio acepte sacar; sugerencia: el principal se queda en el móvil y el agente usa otro). Sin marcar la
+  casilla de que se ha entendido no se puede seguir.
+- [WA-03] Paso 0, opción «Número de prueba de Meta»: se salta el registro, y el panel recuerda que solo reciben
+  mensajes los destinatarios verificados en Meta.
+- [WA-04] Paso 1: nombre, token permanente, App Secret y Phone Number ID; en «Avanzado», PIN de 6 dígitos (si el
+  número ya tenía verificación en dos pasos) y versión de la API de Meta (por defecto v26.0). Un PIN que no sea
+  de 6 cifras se rechaza.
+- [WA-05] «Validar con Meta» comprueba el número y obtiene su cuenta de WhatsApp Business, la app y el portfolio;
+  si Meta no devuelve la app, pide su App ID.
+- [WA-06] «Validar con Meta» comprueba también que el token es válido, de la misma app, de un usuario del sistema
+  y con los permisos de mensajes y de gestión de WhatsApp; si falta algo, dice qué y no deja seguir.
+- [WA-07] Si el token caduca, la app avisa de que dejará de funcionar y recomienda uno permanente.
+- [WA-08] Con todo correcto, muestra «Negocio · Número · Estado» (nombre verificado, número, calidad y estado del
+  nombre y de la verificación) para confirmarlo.
+- [WA-09] Los errores de Meta se muestran en español con qué hacer: token inválido o caducado (190), permisos o
+  app de otro portfolio (200), dato incorrecto (100), demasiados intentos de registro (133016), falta método de
+  pago (131042), fuera de la ventana de 24 h (131047), mensaje no entregable (131026), bloqueo por política (368)
+  y el resto de la tabla oficial. Un código desconocido muestra un mensaje genérico con el código.
+- [WA-10] Si otro número de la instalación usa la misma app de Meta, se reutilizan los datos de esa app.
+- [WA-11] No se puede conectar dos veces el mismo número en la instalación.
+- [WA-12] Paso 2: hay una sola dirección de avisos por instalación, `https://{dominio}/api/webhooks/whatsapp`,
+  siempre en el dominio de producción (nunca el de una vista previa), y un token de verificación propio de la
+  instalación que se genera solo.
+- [WA-13] El asistente intenta suscribir la app a esa dirección automáticamente. Si no puede, muestra la dirección
+  y el token con botón de copiar y los pasos en el panel de la app de Meta («Verificar y guardar», suscribir
+  `messages` y los recomendados), y avisa en directo cuando llega la verificación de Meta. Cada app de Meta
+  tiene una sola dirección de avisos: si ya tiene otra (por ejemplo, la de un n8n del negocio), el asistente
+  avisa de que la sustituiría para toda la app y pide confirmación; sin confirmar, sigue por el camino manual.
+- [WA-14] Siempre suscribe la app a la cuenta de WhatsApp Business del número (repetirlo no hace daño) y comprueba
+  que ha quedado; si no, lo dice y el canal no pasa a conectado, porque sin eso no llegan mensajes.
+- [WA-15] Nunca cambia la dirección de avisos por cuenta o por número (`override_callback_uri`).
+- [WA-16] Cuando la app no tiene una dirección pública con HTTPS (por ejemplo, en local), el asistente lo avisa:
+  se pueden validar los datos, pero no llegarán mensajes reales.
+- [WA-17] Paso 3: si el número no está registrado, la app lo registra con un PIN de 6 cifras (el que ya tenía o,
+  si no tenía, uno nuevo, que pasa a ser su PIN) y lo guarda cifrado; no hace falta fijar el PIN antes. Si Meta
+  dice que el PIN es incorrecto (133005), ofrece cambiarlo por uno nuevo y registrar con él. Desde el
+  23-09-2026 Meta retira el PIN en los números que va eligiendo, pero el registro sigue pidiendo uno de 6
+  cifras.
+- [WA-18] Cuando Meta responde que se han agotado los intentos de registro (10 cada 72 h), la app lo explica y
+  pide confirmación antes de cada nuevo intento.
+- [WA-19] Si el número no está verificado, la app pide el código por SMS o llamada, en español, y deja
+  escribirlo.
+- [WA-20] Cuando Meta aprueba un cambio de nombre, el panel recuerda volver a registrar el número en 14 días como
+  máximo, con un botón para hacerlo.
+- [WA-21] Lista de comprobación, con los pasos de cada punto:
+  - «App publicada (Live)»: sin esto no llegan mensajes reales. Meta pide, entre otras cosas, la dirección de
+    las condiciones del servicio, y conviene dar también la de privacidad y la de eliminación de datos: la app
+    sirve las tres páginas legales, en su versión básica, desde esta misma fase ([CUM-08]).
+  - «Método de pago en WhatsApp Manager»: la API no permite comprobarlo, así que es un aviso que no deja
+    terminar hasta que la persona confirma a mano que lo ha añadido, con enlace al Centro de facturación
+    (Billing Hub) de Meta. Desde el 1-10-2026, sin método de pago Meta deja de entregar los mensajes de
+    servicio cuando se acaban los 1.000 gratis del mes. Con el número de prueba de Meta no se pide.
+- [WA-22] «Sincronizar plantillas» trae las plantillas del número con su estado, categoría, idioma, variables y
+  caducidad (cuando Meta o YCloud la dan);
+  cuando Meta avisa de un cambio de estado, se actualizan solas.
+- [WA-23] Paso 4: muestra «Escribe "hola" a {número}», el mensaje aparece al llegar y «Enviar respuesta de prueba»
+  le contesta.
+- [WA-24] Si en 2 minutos no llega nada, abre un diagnóstico guiado (app sin publicar, `messages` sin suscribir,
+  app sin suscribir a la cuenta, dirección o token incorrectos, HTTPS o firma) y marca lo que la app puede
+  comprobar por sí misma.
+- [WA-25] Paso 5: agente activo, IA encendida o apagada y modo pruebas «solo a estos números», activado por
+  defecto.
+- [WA-26] Cada número tiene un panel con semáforos (verde, ámbar o rojo, con explicación): token, registro,
+  suscripción, avisos, último mensaje, calidad, nombre, límite de mensajes y versión de la API.
+- [WA-27] Botones del panel: Revalidar, Cambiar token (el nuevo solo sustituye al anterior si se valida), Pausar
+  IA y Desconectar.
+- [WA-28] «Desconectar» borra las credenciales y, si se confirma, también quita la suscripción de la app y da de
+  baja el número en Meta. Para volver a usarlo se conecta otra vez con el asistente, no con «Activar».
+- [WA-29] La app revisa cada número cada 6 horas y con los avisos de cuenta, calidad y nombre que envía Meta; si
+  algo empeora, lo muestra en el panel y avisa al propietario y a los administradores.
+- [WA-30] El panel y la guía muestran los límites de Meta:
+  - El límite de mensajes es del portfolio del negocio, compartido entre todos sus números: cuenta los
+    destinatarios distintos a los que el negocio escribe fuera de la ventana de atención en 24 h (responder
+    dentro de la ventana no cuenta). Empieza en 250 y sube a 2.000 (al verificar la empresa o al llegar a 2.000
+    con buena calidad), 10.000, 100.000 e ilimitado.
+  - Sin verificar la empresa, 2 números por portfolio como máximo (20 al verificarla o al llegar a 2.000), y
+    el nombre solo en el perfil, no en la cabecera del chat, hasta que se aprueba.
+  - 15 apps de Meta como máximo por persona sin empresa verificada.
+  - Desde el 15-01-2026, prohibidos los asistentes de IA de propósito general.
+- [WA-31] Cuando Meta verifica la dirección de avisos con el token correcto, la app le devuelve el código que
+  pide; con un token incorrecto, la rechaza.
+- [WA-32] Cuando llega un aviso de WhatsApp con la firma incorrecta o sin firma, la app lo rechaza (401) y no
+  guarda nada. La firma se comprueba antes de leer el aviso, con los App Secret guardados en la instalación, y
+  tiene que ser la del App Secret del canal al que va. Un aviso que ningún App Secret guardado puede comprobar, o
+  que no se puede leer, se rechaza igual.
+- [WA-33] El canal de cada aviso se reconoce por el número de destino; los avisos de cuenta y de plantillas, por
+  la cuenta de WhatsApp Business.
+- [WA-34] Un aviso firmado por una app de la instalación para un número que no es de ningún canal (o que se
+  desconectó) se contesta como recibido y no se guarda su contenido; Diagnóstico anota solo la hora y el número.
+- [WA-35] Con la firma correcta, la app guarda el aviso, descarta los mensajes repetidos (Meta reintenta durante
+  días y a veces duplica) y contesta al momento. Acepta avisos de hasta 3 MB y 1.000 actualizaciones, lo máximo
+  que Meta pone en uno.
+- [WA-36] Se muestran en la bandeja: texto, audio y notas de voz, imagen, documento, vídeo, sticker, ubicación,
+  contactos, respuestas a botones y listas, y reacciones. Cualquier otro tipo aparece como mensaje del sistema
+  «Tipo de mensaje no admitido».
+- [WA-37] Una reacción se muestra sobre el mensaje al que reacciona y no genera respuesta de la IA. Si llega una
+  reacción sin emoji, el cliente la ha quitado: deja de verse en ese mensaje.
+- [WA-38] Los avisos de estado (enviado, entregado, leído, reproducido y fallido) actualizan el mensaje.
+  «Reproducido» es la primera escucha de una nota de voz enviada por el negocio (Meta lo envía desde el
+  17-03-2026). Los estados solo avanzan: el orden de llegada no está garantizado, «entregado» puede no llegar
+  y uno anterior que llega tarde (un «entregado» después de «leído») no cambia nada; «fallido» solo sustituye a
+  «en cola» o «enviado». Un fallo muestra su error en español. Del primer `pricing` que llega se guardan su
+  tipo (`type`: si se cobra o es gratis) y su categoría (`category`); `billable` no se usa porque Meta lo va a
+  retirar.
+- [WA-39] El cliente se reconoce por su identificador de WhatsApp para el negocio (BSUID, que llega desde abril de
+  2026) y por su `wa_id` si llega; el teléfono puede faltar. Un contacto que solo tiene BSUID se crea y se le
+  puede responder. Quien ha activado su nombre de usuario de WhatsApp puede llegar sin teléfono ni `wa_id`: se
+  le responde por su BSUID.
+- [WA-40] Cuando un mensaje trae BSUID y `wa_id` de un contacto que ya existía con uno de los dos, se añade el
+  otro al mismo contacto, sin duplicarlo.
+- [WA-41] Los archivos (audio, imagen, documento, vídeo) se descargan de Meta en cuanto llegan, porque su enlace
+  dura minutos, y se guardan en privado; los audios pasan a transcripción. Si la descarga falla, se reintenta; si
+  no se consigue, el mensaje dice «No se pudo descargar el archivo». Cada tipo tiene el tamaño máximo de Meta
+  (audio y vídeo 16 MB, imagen 5 MB, sticker 500 KB, documento 100 MB): uno mayor no se descarga y dice lo mismo.
+- [WA-42] Se envían texto, imágenes, documentos, audio y plantillas; los mensajes interactivos (botones y
+  listas) son opcionales.
+- [WA-43] La ventana de 24 h se cuenta desde el último mensaje del cliente. Fuera de ella la IA no escribe y la
+  bandeja solo deja enviar una plantilla aprobada, con sus variables.
+- [WA-44] La IA envía una sola respuesta por turno del cliente, nunca varios mensajes seguidos: desde el
+  1-10-2026 Meta cobra cada mensaje de servicio a la tarifa de utilidad del país.
+- [WA-45] Mientras la IA prepara la respuesta, el cliente ve «escribiendo…» y su mensaje como leído, si la API lo
+  permite.
+- [WA-46] Si un envío falla por un error pasajero, se reintenta con esperas crecientes; si el error es permanente,
+  el mensaje queda como fallido, se avisa al equipo y, si el canal lo tiene activado, la conversación pasa a una
+  persona.
+- [WA-47] Coste estimado de cada mensaje enviado, con el `pricing` del estado ([WA-38]): si su tipo es `regular`
+  (se cobra), la tarifa de Ajustes para el mercado del destinatario y esa categoría ([AJU-09]); si es gratuito
+  (cualquier tipo que empieza por `free_`, como los 1.000 mensajes de servicio al mes por número), 0. La app no
+  cuenta los mensajes gratis: Meta ya lo indica en cada estado, y descontarlos aparte los restaría dos veces. El
+  mercado sale del prefijo del teléfono o, sin teléfono, del país del BSUID. Sin tarifa para ese mercado, no se
+  estima y el informe lo señala. Desde el 1-10-2026 las plantillas de utilidad enviadas dentro de la ventana de
+  24 h también se cobran, sin tramo gratuito ([AGD-24]).
+- [WA-48] Con varios números, cada uno es un canal con su agente, su modo pruebas y su panel, y todos usan la
+  misma dirección de avisos. Los números de un mismo portfolio comparten el límite de mensajes, y el panel de
+  cada uno lo dice ([WA-30]).
+- [WA-49] Todas las llamadas a Meta de un canal usan la versión de la API guardada en él; cambiarla obliga a
+  revalidar.
+- [WA-50] Cuando llega un aviso de cambio de identidad (el cliente cambió de número, `user_changed_number`, o
+  solo cambió su BSUID, `user_changed_user_id`), la app busca la identidad por el BSUID anterior
+  (`previous_user_id`) y la cambia al nuevo, y al `wa_id` nuevo si llega, en el mismo contacto. No crea un
+  contacto nuevo, deja una nota del sistema en la conversación y la IA no responde.
+- [WA-51] Si un número empieza a tener envíos fallidos con el error de método de pago (131042), o le fallan los
+  mensajes de servicio después de haber entregado ese mes los 1.000 gratis (según el tipo de precio que marca
+  Meta), el panel avisa «Puede que falte el método de pago en Meta», con enlace al Centro de facturación, y
+  avisa al propietario y a los administradores. Esa cuenta de mensajes gratis solo sirve para este aviso,
+  nunca para el coste ([WA-47]).
+- [WA-52] El panel también permite «Cambiar App Secret» (si Meta lo rota): el nuevo solo sustituye al anterior si
+  la firma de un aviso o la validación con Meta lo confirma, y se guarda cifrado.
+
+### WhatsApp con YCloud (coexistencia)
+
+La API oficial de WhatsApp a través de YCloud, con la cuenta de YCloud del propio negocio. El número se da de alta
+en la consola de YCloud («WhatsApp Business APP Coexistence»), no en esta app. Detalles en
+`docs/integracion-ycloud.md`.
+
+- [YC-01] Canales > Añadir > WhatsApp · YCloud explica qué es la coexistencia y qué hay que hacer antes en YCloud
+  (crear la cuenta, dar de alta el número y tener saldo), con enlaces, y pide la clave de API de YCloud.
+- [YC-02] «Comprobar clave» valida la clave con YCloud y muestra los números de la cuenta con su nombre, estado y
+  calidad, para elegir uno. Una clave que YCloud rechaza no guarda nada y dice por qué, en español.
+- [YC-03] Al conectar, la app crea sola en YCloud la dirección de avisos de ese canal y guarda cifrados la clave y
+  el secreto de la dirección. No se puede conectar dos veces el mismo número en la instalación ([WA-11]).
+- [YC-04] Cuando la app no tiene una dirección pública con HTTPS (por ejemplo, en local), el asistente lo avisa: la
+  clave se valida y el canal se guarda, pero no llegarán mensajes hasta publicar la app y pulsar «Revalidar».
+- [YC-05] Un aviso de YCloud sin la firma del canal, con una firma incorrecta o de hace más de 5 minutos se rechaza
+  y no se guarda nada. Los avisos de otro número de la misma cuenta se ignoran.
+- [YC-06] Recibe los mismos tipos de mensaje que la API de Meta ([WA-36], [WA-37]) y reconoce al cliente igual
+  ([WA-39], [WA-40]). Los archivos se descargan de YCloud en cuanto llegan, con la clave, y se guardan en privado
+  ([WA-41]).
+- [YC-07] Envía texto, imágenes, documentos y plantillas, una sola respuesta por turno. La ventana de 24 h funciona
+  como con Meta ([WA-43]); «Sincronizar plantillas» las trae de YCloud y «Nueva plantilla» las crea allí ([WA-57]).
+  Los estados (enviado, entregado, leído y
+  fallido) actualizan el mensaje ([WA-38]) y los errores se muestran en español, también los propios de YCloud
+  (por ejemplo, sin saldo).
+- [YC-08] Coexistencia: lo que el negocio escribe a un cliente desde la app WhatsApp Business del móvil aparece en
+  su conversación como mensaje de una persona, con la marca «Desde el móvil», y pausa la IA en esa conversación
+  como cuando una persona responde desde la bandeja ([BAN-11]).
+- [YC-09] Cada número tiene un panel con semáforos (clave, número, avisos, saldo y último mensaje) y los botones
+  Revalidar, Cambiar clave (la nueva solo sustituye a la anterior si YCloud la valida y ve el mismo número),
+  Sincronizar plantillas y Desconectar. La app lo revisa cada 6 horas y avisa si algo empeora ([CAN-15]).
+- [YC-10] «Desconectar» borra en YCloud la dirección de avisos del canal y borra la clave guardada. El número
+  sigue en YCloud y en el móvil; para volver a usarlo aquí se conecta otra vez con el asistente.
+- [YC-11] Con YCloud también llegan los avisos de categoría, de calidad y de estado de las plantillas y las bajas de
+  publicidad que el cliente da desde WhatsApp, con el mismo efecto que con Meta ([WA-60], [WA-62]). La app comprueba
+  ella misma permisos y bajas antes de cada mensaje, porque el envío directo de YCloud no consulta su lista de bajas.
+
+### WhatsApp por código QR (no oficial)
+
+El número se vincula escaneando un código QR desde WhatsApp > Dispositivos vinculados, con la librería Baileys.
+No es la API oficial: va contra las condiciones de WhatsApp y el número se puede bloquear. Detalles en
+`docs/integracion-whatsapp-qr.md`.
+
+- [QR-01] Canales > Añadir > WhatsApp · Código QR empieza con un aviso que hay que aceptar marcando una casilla: no
+  es oficial, WhatsApp puede bloquear el número de forma temporal o definitiva, conviene no usar un número del que
+  dependa el negocio, y la IA contestaría a todos los chats de ese número (por eso empieza en modo pruebas).
+- [QR-02] Esta vía necesita que la app esté siempre encendida: funciona con `pnpm dev` y con la versión compilada en
+  un servidor propio, y no en Vercel. Donde no puede funcionar, el asistente lo dice y no deja crear el canal.
+- [QR-03] El asistente muestra un código QR que se renueva solo. Al escanearlo, el canal queda conectado y muestra
+  el número y el nombre de la cuenta. Si nadie lo escanea a tiempo, ofrece generar otro.
+- [QR-04] Las claves de la sesión se guardan cifradas. Al reiniciar la app, el número se vuelve a conectar solo,
+  sin escanear otra vez; lo que llegó mientras estaba apagada se recupera al reconectar.
+- [QR-05] No se puede vincular dos veces el mismo número en la instalación, ni uno que ya está conectado por otra
+  vía ([WA-11]).
+- [QR-06] Recibe texto, notas de voz (que se transcriben), imágenes y documentos de chats individuales. Los
+  grupos, los estados, las difusiones y los canales se ignoran. Cualquier otro tipo aparece como «Tipo de mensaje
+  no admitido» y la IA no lo responde.
+- [QR-07] El cliente se reconoce por su identificador de WhatsApp (LID o, si no lo hay, su identificador de
+  número); el teléfono se guarda como dato cuando se conoce, nunca como clave ([CAN-13]).
+- [QR-08] Envía texto, imágenes y documentos, una sola respuesta por turno, y muestra «escribiendo…» y el leído
+  mientras la IA prepara la respuesta. Los avisos de entregado y leído actualizan el mensaje.
+- [QR-09] Lo que el negocio escribe a un cliente desde su móvil aparece en la conversación como mensaje de una
+  persona, con la marca «Desde el móvil», y pausa la IA en esa conversación ([BAN-11]).
+- [QR-10] Si el móvil cierra la sesión o WhatsApp la retira, el canal pasa a «error», avisa al propietario y a los
+  administradores y el panel ofrece «Volver a vincular», con un código QR nuevo. Un corte de red se recupera solo.
+- [QR-11] Cada número tiene un panel con semáforos (sesión, proceso y último mensaje), el aviso de que la vía no es
+  oficial y los botones Reconectar (abre de nuevo una conexión que se quedó cerrada con la sesión aún vinculada),
+  Volver a vincular y Desconectar.
+- [QR-12] «Desconectar» cierra la sesión en WhatsApp (desaparece de los dispositivos vinculados del móvil) y borra
+  las claves guardadas. El canal queda desactivado y conserva su historial.
+
+### Correo
+
+Detalles en `docs/integracion-correo.md`.
+
+- [COR-01] Canales > Añadir > Correo ofrece Gmail, Outlook / Microsoft 365 u Otro (IMAP/SMTP).
+- [COR-02] Gmail: pantalla con la dirección de redirección para copiar, Client ID, Client Secret y «Conectar con
+  Google». La guía explica el proyecto de Google Cloud del negocio: «Internal» si tiene Workspace; con @gmail.com,
+  «External» publicado «En producción» sin verificar (Google avisa «Google no ha verificado esta app»; máximo 100
+  usuarios). Nunca «Testing», porque el acceso caduca a los 7 días.
+- [COR-03] Al volver de Google, la app comprueba los permisos concedidos (leer y modificar el correo, y el email
+  de la cuenta); si falta alguno, lo dice y no conecta.
+- [COR-04] Gmail tiene el enlace «¿Prefieres contraseña de aplicación? Usa Otro».
+- [COR-05] Gmail, recepción: en cada ronda de trabajo en segundo plano, la app pide los cambios desde la última
+  vez; si Gmail responde que ese punto ya no existe, sincroniza todo de nuevo sin duplicar.
+- [COR-06] Gmail, envío: la respuesta sale en el mismo hilo, con el mismo asunto y las cabeceras de respuesta, y
+  el correo contestado recibe la etiqueta «IA/Respondido».
+- [COR-07] Outlook: pantalla con Client ID, Client Secret, fecha de caducidad del Client Secret (Microsoft lo
+  hace durar 24 meses como máximo), Tenant ID (`common` o el del negocio), dirección de redirección y «Conectar
+  con Microsoft», que pide los permisos Mail.ReadWrite, Mail.Send, offline_access y User.Read. Si Microsoft exige
+  el consentimiento de un administrador, la app muestra el enlace para darlo.
+- [COR-08] Outlook: en cada ronda, la app pide los cambios de la bandeja de entrada; responde al mensaje (en modo
+  borrador, crea el borrador de respuesta) y sigue el hilo por la conversación de Outlook.
+- [COR-09] Outlook solo se conecta por la API de Microsoft: si en «Otro» se pone un correo de Outlook o Microsoft
+  365, la app avisa y propone la opción Outlook (Microsoft ya no admite IMAP/POP con contraseña y desactiva por
+  defecto el envío SMTP con contraseña a finales de 2026).
+- [COR-10] Otro: email, usuario, contraseña (o de aplicación) y servidores IMAP y SMTP con puerto y seguridad, que
+  se rellenan solos según el dominio (Gmail, Yahoo, iCloud, Zoho de pago, IONOS, Hostinger, OVH, cPanel…) y se
+  pueden cambiar.
+- [COR-11] «Probar conexión» comprueba la entrada (IMAP) y el envío (SMTP) y dice en español qué falla; si falla,
+  el canal no queda conectado.
+- [COR-12] Otro, recepción: en cada ronda la app trae los correos nuevos; si el servidor renumera la carpeta,
+  vuelve a sincronizar sin duplicar.
+- [COR-13] Otro, envío: lo enviado se guarda en «Enviados» si el servidor no lo hace solo (Gmail sí lo hace); las
+  carpetas se reconocen por su función, no por su nombre.
+- [COR-14] En «Borrador para revisar» (por defecto), la respuesta de la IA aparece como borrador en la bandeja y
+  en la carpeta de borradores del buzón; una persona la aprueba, la edita o la descarta. En «Automático», sale
+  directamente.
+- [COR-15] Cuando una persona aprueba un borrador, sale en el mismo hilo y el borrador del buzón desaparece.
+- [COR-16] Se ignoran (no crean conversación ni respuesta, y Diagnóstico los cuenta con su motivo): respuestas
+  automáticas, envíos masivos o de listas, boletines con enlace de baja, remitentes «noreply» o «mailer-daemon»,
+  correos sin remitente válido (sin dirección o con una de más de 254 caracteres), rebotes, los enviados por el propio
+  buzón, spam y promociones. Las promociones solo se filtran en Gmail (su
+  categoría «Promociones»): Outlook no tiene esa categoría y su clasificación «Otros» mide relevancia, así que
+  nunca es el único filtro. En Outlook e IMAP se ignoran el correo no deseado y lo que marcan las cabeceras.
+- [COR-17] Tope diario de respuestas de la IA por hilo y por remitente (5 y 10 por defecto, editables) y por buzón (200,
+  fijo, sumando todos sus hilos y remitentes); se comprueban al llegar cada correo y otra vez justo antes de enviar la
+  respuesta. Al llegar a uno, la IA deja de contestar ese día y la conversación espera a una persona.
+- [COR-18] En modo «Automático», lo que envía la IA lleva la marca de respuesta automática
+  (`Auto-Submitted: auto-replied`) en Gmail e IMAP; en Outlook, solo si se comprueba que la vía MIME la
+  conserva, porque Microsoft Graph solo deja añadir cabeceras propias que empiezan por `x-`. Un borrador que una
+  persona aprueba o edita no la lleva: la norma de respuestas automáticas (RFC 3834) la prohíbe en mensajes que
+  envía una persona. Todo lo que sale de la app lleva una cabecera propia (`X-DominIA-…`), y los correos que
+  llegan con ella se ignoran siempre, para evitar bucles. El asunto nunca lleva el prefijo «Auto:», porque
+  Gmail necesita el mismo asunto para mantener el hilo.
+- [COR-19] Antes de pasar un correo a la IA, la app lo convierte de HTML a texto, quita las citas y firmas
+  anteriores y respeta su juego de caracteres; los PDF e imágenes adjuntos van al modelo y los audios a
+  transcripción. Los adjuntos por encima del límite de tamaño se guardan pero no van a la IA, y se indica. Una fecha
+  del correo (cabecera `Date`) de más de 5 minutos en el futuro, o imposible (antes de 1970 o después de 9999), se
+  sustituye por la hora de llegada.
+- [COR-20] Cuando una persona responde al hilo desde su propio programa de correo, la IA se pausa en esa
+  conversación ([BAN-11]).
+- [COR-21] Los correos de la IA llevan saludo y una firma con el aviso de IA.
+- [COR-22] Cuando el acceso caduca, se revoca o la contraseña cambia, el canal pasa a «Requiere reconexión», avisa
+  al propietario y a los administradores y ofrece reconectar sin perder nada. En Outlook, la app avisa 30 días
+  antes de la fecha de caducidad del Client Secret ([COR-07]); cuando caduca, Microsoft rechaza el acceso
+  (`AADSTS7000222`) y el canal pasa a «Requiere reconexión» hasta que se pone uno nuevo.
+- [COR-23] Cuando la vuelta de Google o Microsoft no corresponde a una conexión iniciada desde la app, o trae un
+  error, no se guarda nada y se muestra el motivo.
+- [COR-24] Las apps de Google y Microsoft son del propio negocio; nunca se comparten entre negocios.
+- [COR-25] El remitente de un correo (From) lo escribe quien lo envía: solo cuenta como verificado si el servidor que
+  lo recibió lo dice en la cabecera Authentication-Results que pone encima del mensaje (DMARC superado o, sin resultado
+  de DMARC, SPF o DKIM superados para el dominio del remitente). Si no está verificado, o si quien escribe en el hilo
+  no es el contacto de la conversación, la IA puede responder a preguntas generales, pero en esa respuesta no puede
+  ver, cambiar ni cancelar citas, guardar datos del contacto ni darle de baja ([HER-16]: así nadie da de baja a otro
+  escribiendo con su dirección), y le ofrece una persona; la bandeja muestra «Remitente
+  no verificado». Las respuestas van solo a la dirección del remitente, nunca a la de «Responder a» (Reply-To), y el
+  hilo lo indica cuando el correo pedía otra.
+
+### Chat web
+
+- [WEB-01] Cada chat web da su código para pegar en la web del negocio,
+  `<script src="https://{dominio}/widget.js" data-channel="{id}" async></script>`, con botón de copiar.
+- [WEB-02] Se configuran color, logo, mensaje de bienvenida, posición (izquierda o derecha) y textos legales, con
+  vista previa.
+- [WEB-03] El chat se usa con teclado y lector de pantalla, y se adapta al móvil.
+- [WEB-04] El visitante es anónimo: su navegador guarda un identificador y, si vuelve con el mismo navegador, ve su
+  conversación. Si borra los datos del navegador, empieza una nueva.
+- [WEB-05] Los datos personales (nombre, teléfono o email) solo se piden cuando hacen falta, por ejemplo para
+  reservar, y se guardan en su contacto.
+- [WEB-06] Las respuestas aparecen sin recargar, en pocos segundos.
+- [WEB-07] Las notas de voz (que se transcriben) y las imágenes son opcionales en cada chat: si están
+  desactivadas, sus botones no aparecen y la app rechaza esos archivos.
+- [WEB-08] Hay límite de mensajes por IP y por visitante: al pasarlo, el chat dice «Demasiados mensajes, espera
+  un momento» y no guarda el mensaje.
+- [WEB-09] Los textos y archivos que superan el tamaño máximo se rechazan con un aviso.
+- [WEB-10] El chat solo funciona en los dominios permitidos de la lista; con la lista vacía, solo en la propia
+  app (`/widget-demo`).
+- [WEB-11] Un visitante solo puede leer su propia conversación; con el identificador de otro, la app no devuelve
+  nada.
+- [WEB-12] `/widget-demo` muestra una web de ejemplo del negocio con el chat web de la demo funcionando.
+- [WEB-13] Si el canal está desactivado, el chat dice que no está disponible.
+
+### Telegram
+
+Un bot de Telegram del propio negocio, creado con @BotFather (fase 9). Detalles en `docs/integracion-telegram.md`.
+
+- [TG-01] Canales > Añadir > Telegram pide el token del bot, lo valida y configura sola la dirección de avisos con
+  un secreto. El asistente explica cómo crear el bot, con un código QR y un enlace que abren @BotFather, y al
+  conectar muestra el nombre y el usuario del bot. El token se guarda cifrado y nunca vuelve a la pantalla.
+- [TG-02] Un aviso de Telegram sin el secreto correcto se rechaza y no se guarda nada. Cada bot tiene su propia
+  dirección de avisos, y una dirección que no es la de un bot conectado se rechaza igual.
+- [TG-03] Recibe texto, notas de voz (que se transcriben) e imágenes, y responde con texto; una persona puede enviar
+  además una imagen. Solo se atienden los chats privados: grupos, canales y otros bots se ignoran. Cualquier otro
+  tipo de mensaje aparece como mensaje del sistema «Tipo de mensaje no admitido» y la IA no lo responde.
+- [TG-04] «Desconectar» quita la dirección de avisos en Telegram y borra el token. El canal queda desactivado y
+  conserva su historial; para volver a usarlo se conecta otra vez con el asistente, no con «Activar».
+- [TG-05] No se puede conectar dos veces el mismo bot en la instalación. Si el bot ya enviaba sus avisos a otra
+  dirección (otra instalación u otra herramienta), el asistente avisa de que dejará de funcionar allí y pide
+  confirmación; sin confirmar, no cambia nada.
+- [TG-06] Cuando la app no tiene una dirección pública con HTTPS (por ejemplo, en local), el bot funciona en «modo
+  local»: la app pregunta a Telegram por los mensajes nuevos en cada ronda del trabajo en segundo plano, sin
+  dirección de avisos, y la pantalla lo dice. Cuando la app tiene dirección pública, «Revalidar» pasa a avisos.
+- [TG-07] Al conectar, y en el panel, se muestran el enlace del bot (`https://t.me/{usuario}`) y su código QR, para
+  probarlo y para dárselo a los clientes: un bot no puede escribir primero.
+- [TG-08] Cada bot tiene un panel con semáforos (token, recepción y último mensaje) y los botones Revalidar, Cambiar
+  token (el nuevo solo sustituye al anterior si Telegram lo acepta y es del mismo bot) y Desconectar. La app revisa
+  cada bot cada 6 horas; si algo empeora, lo muestra en el panel y avisa al propietario y a los administradores.
+- [TG-09] La IA envía una sola respuesta por turno: un texto de más de 4.096 caracteres se recorta, nunca se parte
+  en dos mensajes. Los errores de Telegram se muestran en español; si Telegram pide esperar, el envío se reintenta
+  tras esa espera; si el cliente ha bloqueado el bot, el mensaje queda como fallido.
+- [TG-10] «/start», lo que Telegram envía solo cuando alguien abre el chat con el bot por primera vez, se guarda
+  como mensaje del cliente y el agente lo contesta saludando.
+- [TG-11] Las notas de voz y las fotos se descargan de Telegram en cuanto llegan (como mucho 20 MB, el límite de
+  Telegram para los bots) y se guardan en privado. Si la descarga falla, se reintenta; si no se consigue, el mensaje
+  dice «No se pudo descargar el archivo».
+- [TG-12] Los recordatorios y los envíos por Telegram salen por el bot que se elige en su configuración y solo van a
+  clientes que han escrito a ese bot (un bot no puede escribir primero, [TG-07]), que tienen el permiso que corresponde
+  ([CTO-09]: el de avisos se da por hecho mientras no digan que no) y que no se han dado de baja. Si el cliente ha bloqueado el bot, Telegram lo avisa (también al
+  desbloquearlo): mientras siga bloqueado, no se le intenta enviar nada por ese bot y se pasa al siguiente canal
+  marcado; si no hay otro, queda «No enviado: ha bloqueado el bot».
+- [TG-13] El recordatorio por Telegram lleva los mismos dos botones que el de WhatsApp, «Confirmo» y «Necesito
+  cambiarla», con el mismo efecto ([AGD-32]).
+
+### Instagram
+
+Los mensajes directos de la cuenta profesional de Instagram del negocio (fase 16, encargo del propietario del
+2026-10-16: «un agente que responda a los DM y que también se pueda responder desde la bandeja»), con la API de
+Instagram con inicio de sesión de Instagram: la app de Meta es del propio negocio y no hace falta página de Facebook
+(decisión 0029). Detalles en `docs/integracion-instagram.md`.
+
+- [IG-01] Canales › Añadir › Instagram explica paso a paso, con enlaces, cómo crear la app de Meta del negocio con el
+  producto Instagram, añadir la cuenta profesional, generar su token y publicar la app, y pide el token y la clave
+  secreta de Instagram de la app (y, si se quiere, la clave secreta de la app de Meta). La app comprueba el token,
+  muestra la cuenta (@usuario), la suscribe a los mensajes y enseña la dirección de avisos y el token de verificación
+  para pegarlos en Meta; después espera un mensaje de prueba. Si el canal se deja con el nombre «Instagram», se llama
+  como su cuenta (@usuario). Token y claves se guardan cifrados y nunca vuelven a la pantalla; el token de verificación,
+  que hay que pegar en Meta, lo ven en el panel el propietario y los administradores.
+- [IG-02] Un aviso de Instagram sin una firma válida de una de las claves del canal se rechaza sin guardar nada. Cada
+  canal tiene su propia dirección de avisos, y la comprobación de Meta solo recibe respuesta con su token de
+  verificación. Como Meta llama a una sola dirección por app, si varias cuentas comparten la app de Meta, lo que llega a
+  la dirección de una para otra cuenta conectada (firmado con la misma clave) va al canal de esa otra, aunque esté
+  desactivado, y cada canal guarda en bruto solo lo de su cuenta.
+- [IG-03] Recibe texto, notas de voz (que se transcriben), imágenes y PDF, y responde con texto: la IA y las personas
+  desde la bandeja. Lo demás (vídeos, publicaciones, reels e historias compartidas, menciones en historias) aparece como
+  mensaje del sistema «Tipo de mensaje no admitido» y la IA no lo responde, aunque abre la ventana de 24 h ([IG-04]);
+  de una historia (una mención o una respuesta) nunca se guarda su dirección, tampoco en los avisos en bruto. Los
+  archivos se descargan en cuanto llegan y se guardan en privado.
+- [IG-04] Ventana de 24 h: solo se puede responder hasta 24 horas después del último mensaje del cliente, y el negocio
+  no puede escribir primero. Fuera de la ventana la IA no responde y la bandeja no deja enviar, y lo explica. Por eso
+  Instagram no se usa en recordatorios ni en envíos.
+- [IG-05] Instagram admite 1.000 bytes por mensaje (una letra con tilde ocupa 2 y un emoji 4). Una respuesta de la IA más
+  larga se recorta con «…»; una de una persona (escrita o un borrador cambiado) no se envía y la bandeja dice que la
+  acorte. Nunca se parte en dos mensajes.
+- [IG-06] Lo que el negocio responde desde la propia app de Instagram entra en la conversación al momento, marcado
+  «Desde Instagram», y pausa la IA como cuando escribe una persona ([BAN-11]), antes de que pueda contestar a un mensaje
+  posterior del cliente.
+- [IG-07] Si el cliente borra un mensaje, se borra también en la app (su texto, su archivo, el aviso en bruto que lo
+  traía y el resumen de la conversación, que se rehace) y queda «El cliente borró este mensaje», también en la lista de
+  la bandeja.
+- [IG-08] Cuando escribe alguien nuevo, la app pide a Instagram su nombre y su usuario y los pone en el contacto; el
+  usuario se muestra, pero lo que identifica al cliente es su identificador de Instagram ([CAN-13]).
+- [IG-09] El token dura 60 días: la app lo renueva sola cada semana (también con el canal desactivado) y el panel dice
+  hasta cuándo vale. Si Instagram rechaza el token (no válido, caducado, revocado o sin un permiso), al renovarlo, al
+  revisarlo o al enviar, el canal pasa a «error» al momento y avisa al propietario y a los administradores, con cómo
+  generar otro; si la renovación falla por otra causa (la conexión o un error pasajero de Instagram), se reintenta en
+  la siguiente revisión y pasa a «error» si le quedan menos de 7 días.
+- [IG-10] Cada cuenta tiene un panel con semáforos (token, recepción y último mensaje) y los botones Revalidar (vuelve a
+  comprobar el token y a suscribir la cuenta), Cambiar token (el nuevo solo sustituye al anterior si es de la misma
+  cuenta) y Desconectar (borra el token y las claves; el canal queda desactivado con su historial). La app revisa cada
+  cuenta cada 6 horas, vuelve a suscribirla a sus mensajes y avisa si algo empeora ([CAN-15]).
+- [IG-11] No se puede conectar dos veces la misma cuenta de Instagram en la instalación; la de un canal desconectado se
+  vuelve a conectar desde ese canal, que conserva sus conversaciones.
+- [IG-12] Los errores de Instagram se muestran en español; si Instagram pide esperar, el envío se reintenta una vez; si
+  el cliente no está disponible o la ventana está cerrada, el mensaje queda como fallido con el motivo.
+- [IG-13] La demo trae una cuenta de Instagram de demo con una conversación, y el simulador puede escribir por ella; en
+  un canal de demo nada sale de verdad ([ARR-11]).
+
+### Agentes
+
+- [AGE-01] Agentes muestra cada agente con su nombre, avatar, modelo y los canales donde está activo.
+- [AGE-02] Un agente se crea desde la plantilla de un sector o en blanco; hay plantilla para cada sector.
+- [AGE-03] El editor tiene: General (nombre, descripción, avatar, idioma y tono), Instrucciones, Modelo,
+  Conocimiento, Herramientas, Traspaso, Canales, Probar y Versiones.
+- [AGE-04] Las instrucciones son guiadas: rol, información del negocio, qué puede y qué no, estilo y cuándo pasar a
+  una persona.
+- [AGE-05] «Generar borrador con IA» propone instrucciones a partir de la web del negocio o de una descripción; el
+  borrador se puede editar y no se guarda hasta pulsar Guardar.
+- [AGE-06] «Vista previa del prompt» enseña el texto completo que recibirá el modelo, en el orden de [MOT-07].
+- [AGE-07] Conocimiento: archivos de contexto, bases de conocimiento y modo «Automático» (busca cuando lo
+  necesita) o «Buscar siempre» (busca antes de cada respuesta).
+- [AGE-08] Herramientas: se activan o desactivan las del sistema y las HTTP personalizadas ([HER-11]).
+- [AGE-09] Traspaso: palabras clave, número de «no lo sé» antes de pasar a una persona, temas sensibles, mensajes
+  al cliente dentro y fuera de horario, y a quién avisar.
+- [AGE-10] Canales: lista de canales con el interruptor «Activo aquí»; si el canal ya tiene otro agente activo,
+  pide confirmación («Sustituirá a …»).
+- [AGE-11] Un agente puede estar activo en varios canales a la vez.
+- [AGE-12] Cada vez que se guarda un agente se crea una versión (quién y cuándo); desde Versiones se recupera una
+  anterior, que se guarda como versión nueva.
+- [AGE-13] Cuando se borra un agente activo en algún canal, la app pide confirmación y esos canales se quedan sin
+  agente; los mensajes antiguos conservan su nombre.
+- [AGE-14] En una conversación se puede elegir otro agente solo para ella; desde entonces responde ese.
+- [AGE-15] Un agente sin nombre o con datos incorrectos no se guarda y se explica el error.
+- [AGE-16] Un agente se puede duplicar: la copia sale con todos sus ajustes, sin canales asignados y con su propia
+  primera versión.
+- [AGE-17] Además de las instrucciones guiadas, un apartado «Otras instrucciones» admite texto libre que va al
+  agente junto con el resto.
+
+### Modelos de IA
+
+Detalles en `docs/integracion-openrouter.md`.
+
+- [MOD-01] La lista de modelos sale de OpenRouter con la clave del negocio, respetando su configuración de
+  privacidad (si falla, se usa la lista general). Se guarda 12 horas, se vuelve a pedir sola cada 12 horas mientras
+  hay clave y tiene botón «Actualizar».
+- [MOD-02] Solo aparecen modelos que admiten herramientas. Se excluyen los gratuitos o marcados «solo pruebas»,
+  los de procesamiento por lotes, los alias que cambian de modelo, los que tienen precios negativos y los que
+  tienen fecha de retirada.
+- [MOD-03] Cada modelo muestra nombre, proveedor, precio de entrada y de salida por millón de tokens en USD,
+  tamaño de contexto e iconos de si admite imagen, PDF y audio.
+- [MOD-04] Hay buscador y una lista de recomendados que se puede editar.
+- [MOD-05] Al guardar un agente se comprueba que su modelo existe y admite herramientas, y se elige un modelo de
+  respaldo de otro proveedor; si el principal falla, responde el de respaldo.
+- [MOD-06] Cuando un modelo en uso (el principal o el de respaldo de un agente, o uno de los modelos por defecto de
+  Ajustes > IA) anuncia fecha de retirada o desaparece de la lista, la app lo avisa en el agente y, una sola vez por
+  modelo y por cambio, al propietario y a los administradores ([AJU-08]).
+- [MOD-07] Por agente se ajustan temperatura, razonamiento (bajo por defecto, porque muchos modelos razonan de
+  serie y tardan) y longitud máxima de la respuesta.
+- [MOD-08] Sin clave, la lista no se carga y se ve el aviso de [ARR-14].
+
+### Motor de respuesta
+
+- [MOT-01] Cuando llega un mensaje que la IA debe atender, la respuesta se programa para unos segundos después
+  (4–8 s); si llegan más mensajes en ese tiempo, espera de nuevo, hasta 20 s desde el primero, y contesta a todos
+  con una sola respuesta. Los avisos del sistema y los tipos no admitidos ([WA-36], [WA-50]) no son mensajes del
+  cliente: ni retrasan la respuesta ni la IA los lee.
+- [MOT-02] Nunca se preparan dos respuestas a la vez para la misma conversación. Si llega un mensaje nuevo antes
+  de enviar la respuesta en preparación, esa respuesta se descarta y se prepara otra que lo incluye.
+- [MOT-03] Antes de responder, la app comprueba que el canal tiene agente activo y la IA encendida, que la
+  conversación está en modo IA y sin pausa, el modo pruebas, la ventana de 24 h de WhatsApp, que el contacto no
+  se ha dado de baja, el horario y que hay clave de OpenRouter. Si algo falla, la IA no responde y el mensaje
+  espera a una persona.
+- [MOT-04] Prepara la entrada: transcribe los audios y describe las imágenes si el modelo no las admite
+  ([MED-01], [MED-05]).
+- [MOT-05] Reglas de la plataforma, que van antes que cualquier instrucción del agente: solo temas del negocio (lo
+  demás se redirige con amabilidad); no inventar precios, horarios, disponibilidad ni políticas, sino usar
+  herramientas y conocimiento, y si no se sabe, decirlo y ofrecer una persona; confirmar con el cliente antes de
+  crear, cambiar o cancelar una cita; aviso de IA en el primer mensaje; no pedir tarjetas, contraseñas ni
+  documentos de identidad; si piden una persona, traspasar; breve en WhatsApp y chat web, con saludo y firma en
+  correo.
+- [MOT-06] Las instrucciones de un agente no pueden quitar las reglas de la plataforma: siempre van delante en el
+  prompt.
+- [MOT-07] El prompt se monta de lo estable a lo variable, para aprovechar la caché del modelo: reglas, perfil del
+  negocio (datos, horario y servicios), instrucciones, archivos de contexto, datos del momento (fecha y hora en la
+  zona del negocio, canal, contacto y resumen) y los últimos mensajes (los audios, como texto).
+- [MOT-08] La llamada a OpenRouter va sin respuesta por partes, con la conversación como sesión, prohibiendo a
+  los proveedores guardar o usar los datos, con «Sin retención de datos» si está activado y con hasta 6 pasos de
+  herramientas.
+- [MOT-09] Si tras el sexto paso no hay respuesta final, la app no envía nada a medias: pasa la conversación a una
+  persona.
+- [MOT-10] Se envía una sola respuesta, nunca troceada en varios mensajes.
+- [MOT-11] Cada respuesta queda registrada (modelo pedido y usado, tokens, coste que indica OpenRouter, tiempo,
+  herramientas usadas y error si lo hubo) y la pantalla se actualiza.
+- [MOT-12] Si la IA falla (tiempo agotado, fallan el modelo principal y el de respaldo, o no queda saldo), se
+  reintenta una vez; si vuelve a fallar, el cliente no recibe nada, la conversación queda para una persona con el
+  aviso «La IA no ha podido responder» y el error aparece en Diagnóstico.
+- [MOT-13] En conversaciones largas, la app mantiene un resumen acumulado que sustituye a los mensajes antiguos.
+- [MOT-14] En modo «Borrador para revisar», la respuesta se guarda como borrador en vez de enviarse.
+- [MOT-15] El trabajo en segundo plano (respuestas, correo, conocimiento, recordatorios, envíos y revisiones) avanza a
+  trozos cortos. Se lanza al contestar cada aviso y desde la dirección del cron (que, publicada la app, llama cada
+  minuto el cron de Supabase); en local, `pnpm dev` lo lanza cada unos 15 s sin configurar nada, y `pnpm worker` lo
+  ejecuta en bucle (en un servidor propio, con la base de datos en Supabase).
+- [MOT-16] Una tarea que falla se reintenta con esperas crecientes; tras varios intentos queda como fallida y se
+  ve en Diagnóstico. Si dos rondas coinciden, cada tarea se hace una sola vez.
+
+### Audio, imágenes y documentos
+
+- [MED-01] Los audios se transcriben con el modelo elegido en Ajustes (por defecto, uno barato y bueno en
+  español), en español y con 60 s de espera como máximo; se guarda su coste. La transcripción no admite la
+  prohibición de guardar datos en cada petición, así que su privacidad depende del modelo: el de por defecto
+  (`openai/whisper-large-v3-turbo`) solo tiene proveedores sin retención de datos ([CUM-10], [AJU-04]).
+- [MED-02] Las notas de voz de WhatsApp se envían tal cual; si el modelo las rechaza, se convierten a MP3 y, si aun
+  así falla, se prueba el modelo de respaldo, solo si todos sus proveedores están en la lista sin retención de
+  datos de OpenRouter ([CUM-10]).
+- [MED-03] Si un audio no se puede transcribir o pasa de 25 MB, se indica «No se pudo transcribir» y la IA pide al
+  cliente que lo escriba.
+- [MED-04] La transcripción se guarda y se ve bajo el reproductor en la bandeja; el agente recibe el texto.
+- [MED-05] Las imágenes van al modelo si las admite; si no, un modelo de visión barato las describe y el agente
+  recibe la descripción.
+- [MED-06] Los PDF van al modelo como texto extraído o como archivo, según lo que admita el modelo.
+- [MED-07] Otros archivos (vídeo, sticker, hojas de cálculo…) se guardan y se ven en la bandeja; el agente solo
+  sabe que ha llegado un archivo de ese tipo.
+- [MED-08] Los archivos solo se abren desde la app, con sesión y permiso sobre esa conversación; un enlace a un
+  archivo sin sesión no funciona.
+
+### Herramientas del agente
+
+- [HER-01] Herramientas del sistema: `buscar_conocimiento(consulta)`, `listar_servicios()`,
+  `consultar_disponibilidad(servicio, desde, hasta, profesional?, personas?)`, `crear_cita(servicio, inicio,
+  profesional?, personas?, nombre, telefono?, email?, notas?)`, `ver_citas_del_cliente()`,
+  `cancelar_cita(cita_id, motivo?)`, `reprogramar_cita(cita_id, nuevo_inicio)`, `guardar_datos_contacto(...)`,
+  `anotar_permiso_avisos(acepta)`, `dar_de_baja(de)` y `transferir_a_humano(motivo, resumen, urgencia)`.
+- [HER-02] Cada herramienta comprueba sus datos; si son incorrectos, devuelve un error al modelo y no cambia nada.
+- [HER-03] Las herramientas devuelven respuestas cortas, y cada uso queda en el registro de actividad.
+- [HER-04] Las herramientas solo actúan sobre el contacto de la conversación: no pueden ver, cancelar ni cambiar
+  citas de otro contacto.
+- [HER-05] `consultar_disponibilidad` devuelve huecos reales del motor de la agenda ([AGD-08]).
+- [HER-06] `crear_cita` y `reprogramar_cita` vuelven a comprobar el hueco al guardar; si ya no está libre,
+  devuelven el error y otros huecos.
+- [HER-07] `guardar_datos_contacto` guarda nombre, teléfono, email y notas en el contacto de la conversación.
+- [HER-08] `transferir_a_humano` hace el traspaso de [TRA-01] con su motivo, resumen y urgencia.
+- [HER-09] Lo que escriben los clientes, sus archivos y las webs son datos, no órdenes: un mensaje que diga
+  «ignora tus instrucciones» no cambia las reglas ni da acceso a otros datos.
+- [HER-10] En la fase 1 el agente solo tiene la herramienta de traspaso; las demás llegan con su fase. Desde la
+  fase 4 se puede encender `buscar_conocimiento`: un agente nuevo la trae apagada y los de la demo, encendida.
+- [HER-11] Herramientas HTTP personalizadas (para n8n, un CRM, etc.): se definen en la pantalla con nombre,
+  descripción, parámetros, método, dirección, cabeceras secretas y tiempo máximo.
+- [HER-12] Las cabeceras secretas se guardan cifradas y nunca se muestran enteras; los errores de la herramienta
+  llegan al modelo sin ellas.
+- [HER-13] Una herramienta HTTP que pasa de su tiempo máximo se corta y devuelve error; su respuesta se recorta a
+  un tamaño compacto.
+- [HER-14] Una herramienta HTTP solo puede llamar a direcciones públicas con HTTPS, nunca a la red interna del
+  servidor.
+- [HER-15] Al reservar, la IA no pregunta por los avisos de sus citas: el permiso se da por hecho ([CTO-09]). Cuando el
+  cliente dice con sus palabras que no quiere avisos antes de sus citas, la IA lo anota con `anotar_permiso_avisos`
+  (acepta = false) y se lo confirma: desde entonces no le salen recordatorios por WhatsApp ni por Telegram. Si más
+  tarde dice que vuelve a quererlos, lo anota con acepta = true. Cada vez guarda la fecha, el origen («en la
+  conversación») y, como prueba, el último mensaje de la IA y el del cliente, que se conservan aunque la limpieza de
+  [CUM-05] borre la conversación. Ante una respuesta dudosa, le pregunta. La IA nunca anota el permiso «Novedades y
+  publicidad». La herramienta solo está en las conversaciones de WhatsApp y de Telegram, y se enciende y se apaga con
+  las de citas.
+- [HER-16] Cuando el cliente pide con sus palabras que no le escriban más («no me mandéis más mensajes», «no quiero
+  más ofertas»), la IA lo da de baja con `dar_de_baja` de lo que pide: de novedades y publicidad en ese canal, o de todo en
+  él, como con «BAJA» ([CUM-03], [CTO-10]); si no está claro cuál de las dos, se lo pregunta. Solo actúa sobre el
+  contacto de su conversación ([HER-04]). Después se lo confirma. Esta herramienta está
+  siempre encendida en los agentes que atienden clientes: no se puede apagar. Solo se quita en la respuesta a un correo
+  cuyo remitente no está verificado ([COR-25]).
+
+### Probar agente
+
+- [PRU-01] «Probar» es un chat con el agente, con su configuración guardada y sin canales reales.
+- [PRU-02] En cada respuesta muestra las herramientas usadas (con sus datos y su resultado), los fragmentos de
+  conocimiento con su puntuación y su fuente, los tokens, el coste y el tiempo.
+- [PRU-03] «Simular canal» cambia entre WhatsApp, correo y web, y el agente responde con el estilo y las reglas de
+  ese canal.
+- [PRU-04] Las citas creadas al probar quedan marcadas «Prueba» en la agenda y se pueden borrar todas de una vez.
+- [PRU-05] Las conversaciones de prueba no aparecen en la bandeja ni cuentan en los informes.
+- [PRU-06] «Empezar de nuevo» borra la conversación de prueba.
+- [PRU-07] Sin clave, se ve el aviso de [ARR-14] y no se puede enviar.
+
+### Conocimiento
+
+Detalles en `docs/busqueda-hibrida.md` y, para los PDF escaneados, en `docs/integracion-mistral-ocr.md`.
+
+- [CON-01] Nivel 1, archivos de contexto de un agente: se sube un PDF, DOCX, TXT o MD, o se pega texto, y se
+  convierte en Markdown editable que va entero en el prompt del agente.
+- [CON-02] Cada agente tiene un tope de 30.000 tokens de archivos de contexto: al acercarse, la app avisa del
+  coste por mensaje y sugiere pasarlo a una base de conocimiento; por encima del tope, no se guarda.
+- [CON-03] Nivel 2, bases de conocimiento: se reutilizan entre agentes y un agente puede usar varias; solo se busca
+  en las del agente.
+- [CON-04] Las bases admiten archivos PDF, DOCX, XLSX, CSV, TXT y MD, páginas web (con mapa del sitio opcional) y
+  preguntas frecuentes escritas en la pantalla. Otro tipo de archivo, o uno demasiado grande, se rechaza con aviso. El
+  máximo es 25 MB por archivo; con la app publicada en Vercel, 4 MB (una petición no admite más allí): la pantalla
+  dice el que toca antes de subir. El texto que se escribe o se pega se guarda sin el carácter nulo (NUL), que la
+  base de datos no admite.
+- [CON-05] Cada documento muestra su estado: en cola, extrayendo, troceando, embeddings, listo o error (con
+  motivo). El trabajo se hace en segundo plano y por pasos.
+- [CON-06] El texto se extrae a Markdown conservando las páginas. Una página sin texto (en blanco, solo imágenes
+  o escaneada dentro de un PDF que sí tiene texto) no se lee: la ficha del documento dice cuántas son.
+- [CON-07] Un PDF escaneado (sin texto) se lee con Mistral OCR si hay clave; si no, queda con el aviso «PDF
+  escaneado: añade la clave de Mistral OCR».
+- [CON-08] Las hojas de cálculo se parten en bloques de unas 20 filas, con las cabeceras repetidas en cada uno.
+- [CON-09] Las páginas web guardan su fecha y una huella del contenido; con el refresco activado, se vuelven a leer
+  y, si cambiaron, se reprocesan.
+- [CON-10] Los fragmentos se cortan por encabezados, de unos 400 tokens (entre 150 y 600) y 60 de solape, sin
+  partir filas de tabla, con título, sección y página, el prefijo «Documento: título > sección» y un resumen del
+  documento en 2 frases. Cuando un fragmento lleva texto de más de una página (también el solape con el final de
+  la anterior), cada parte va marcada con su página, para que el dato se cite con la suya. El título de un archivo
+  es el que trae el PDF o el Word en sus propiedades, si lo tiene y ningún otro documento de la base se llama ya
+  así (las partes de un manual dividido conservan su nombre de archivo), y si no su nombre; el equipo lo puede
+  cambiar (el de una pregunta frecuente es su pregunta), y entonces los fragmentos se vuelven a procesar con el
+  título nuevo.
+- [CON-11] Los embeddings se calculan por lotes con el modelo de la base (por defecto
+  `openai/text-embedding-3-small`, de 1536 dimensiones); si un modelo devuelve otro tamaño, se rechaza con un
+  error claro.
+- [CON-12] Sin clave, los documentos se extraen y se trocean y ya se encuentran por texto; los embeddings quedan
+  pendientes y se calculan al poner la clave.
+- [CON-13] Cada base guarda su modelo y sus dimensiones; cambiarlos obliga a reprocesarla. Mientras se reprocesa,
+  se sigue buscando en el índice anterior hasta que el nuevo está completo.
+- [CON-14] Si se sube a una base un archivo idéntico a otro que ya tiene, la app avisa y no lo duplica.
+- [CON-15] Borrar un documento borra sus fragmentos y su archivo.
+- [CON-16] La búsqueda combina significado y palabras (40 resultados de cada una; basta con que aparezca alguna de
+  las palabras), los mezcla y devuelve los 8 mejores (6 si está activada la reordenación de [AJU-04]). Si la
+  reordenación falla, devuelve los 8 sin reordenar. Por palabras, va antes el fragmento que tiene más palabras
+  distintas de la pregunta.
+- [CON-17] La búsqueda por palabras no distingue mayúsculas ni tildes, y encuentra otras formas de la misma palabra
+  (singular y plural, un verbo y su nombre): «depilacion» encuentra «depilación», «tintes» encuentra «tinte» y
+  «reservar» encuentra «reserva».
+- [CON-18] Si nada es relevante, la herramienta devuelve «SIN_RESULTADOS»; el agente dice que no lo sabe y ofrece
+  una persona.
+- [CON-19] La respuesta de la búsqueda ocupa como máximo unos 3.500 tokens, en fragmentos numerados con título,
+  página y sección, y nunca incluye los embeddings.
+- [CON-20] Se guardan los fragmentos usados en cada respuesta; en la bandeja, «¿Por qué respondió esto?» los
+  muestra.
+- [CON-21] «Probar búsqueda» busca sin usar el modelo de chat y enseña los fragmentos con su puntuación y su
+  fuente.
+- [CON-22] «Convertir en FAQ», desde una respuesta de una persona en la bandeja, crea una pregunta frecuente
+  (pregunta del cliente y respuesta de la persona) que se puede editar antes de guardarla en la base elegida.
+- [CON-23] Un PDF de más de 100 páginas se procesa entero y el agente responde un dato de él citando la fuente.
+
+### Agentes internos
+
+Un agente interno es un asistente para el equipo: responde con los documentos del negocio a las personas a las que
+se da acceso. Nunca habla con clientes. Por qué está hecho así: `docs/decisions/0027-agentes-internos.md`.
+
+- [INT-01] Al crear un agente se elige «Para clientes» o «Interno», y el tipo no se cambia después. Un agente interno
+  se crea en blanco, sin plantilla de sector ni «Generar borrador con IA» (ese borrador es para atender clientes), y
+  su copia ([AGE-16]) sale también interna y con el mismo acceso.
+- [INT-02] El editor de un agente interno tiene General, Instrucciones, Modelo, Conocimiento, Acceso, Probar y
+  Versiones. No tiene Herramientas, Traspaso ni Canales, ni el campo «Cuándo pasar a una persona» en Instrucciones.
+- [INT-03] Un agente interno nunca responde a clientes: no se puede activar en un canal ni elegir para una
+  conversación ([AGE-10], [AGE-14]). El intento se rechaza y no cambia nada.
+- [INT-04] Al crear una base de conocimiento se elige «Para clientes» o «Interna», y no se cambia después. Una base
+  interna solo la puede usar un agente interno; un agente interno puede usar también las bases para clientes.
+  Asignar una base interna a un agente de clientes se rechaza, y la búsqueda de un agente de clientes nunca lee una
+  base interna. «Pasar a una base» un archivo de contexto de un agente interno ([CON-02]) solo admite bases
+  internas, y la base que crea es interna.
+- [INT-05] Acceso: en cada agente interno se elige «Todo el equipo» o personas concretas. Propietario y
+  administradores pueden usar todos; Supervisor y Agente, solo aquellos a los que tienen acceso; Solo lectura,
+  ninguno. Un agente interno nuevo empieza sin nadie más: hasta que se elige, solo lo usan propietario y
+  administradores. La tarjeta de cada agente interno, en Agentes, dice quién tiene acceso. Guardar el acceso solo
+  cambia a las personas de la lista (supervisores y agentes activos): quien está desactivado conserva el suyo para
+  cuando vuelva.
+- [INT-06] «Asistentes» enseña a cada persona los agentes internos que puede usar, y solo está en el menú de quien
+  tiene alguno. Uno al que no tiene acceso no aparece, y abrirlo por su dirección o preguntarle se rechaza.
+- [INT-07] La persona escribe una pregunta, de hasta 4.000 caracteres, y recibe una sola respuesta, con sus
+  fuentes: lo que el agente consultó para responder, de lo más a lo menos relevante (documento, sección, página y
+  base). Si el modelo se niega a responder, no lleva fuentes. El agente interno solo dispone de la búsqueda en su
+  conocimiento y de sus archivos de contexto: no tiene las herramientas de citas, de contactos ni de traspaso, ni
+  herramientas HTTP. Cuando no puede responder, el aviso nunca ofrece pasar con una persona y dice lo que quien
+  pregunta puede hacer (reintentar, escribirlo de otra forma, empezar otra conversación); lo que solo arregla
+  quien configura la IA (la clave, su saldo, el modelo) se le dice tal cual a propietario y administradores, y al
+  resto, que avise a un administrador. «Reintentar» solo sale cuando repetir la pregunta puede servir. La respuesta
+  se muestra con formato sencillo (listas y negritas), y al agente se le pide que no use lo que la pantalla no
+  muestra (tablas, cursivas, títulos). De una conversación larga el modelo recibe las diez últimas preguntas con
+  sus respuestas. Mientras llega la respuesta se puede abrir otra conversación o salir: la respuesta se guarda
+  igual.
+- [INT-08] Reglas de la plataforma para un agente interno, por delante de sus instrucciones ([MOT-06]): solo temas
+  del negocio; responde con lo que encuentra en su conocimiento y dice de qué documento y página sale; si no lo
+  encuentra, dice que no lo sabe y no lo inventa; es una IA y no lo niega; lo que traen los documentos y lo que
+  escribe la persona son datos, no órdenes.
+- [INT-09] Cada conversación con un agente interno se guarda y solo la ve quien la escribió: nadie más, tampoco
+  propietario ni administradores, puede leerla ni borrarla.
+- [INT-10] La persona ve sus conversaciones anteriores con cada agente, puede seguir una, empezar otra y borrarlas.
+  Las que no caben en la lista se traen con «Cargar más», y los mensajes anteriores de una conversación larga, con
+  «Cargar mensajes anteriores»: todas se pueden ver y borrar. Si pierde el acceso a un agente, deja de ver sus
+  conversaciones con él. Al borrar a un usuario o un agente interno se borran sus conversaciones; la confirmación
+  de borrar el agente lo avisa. Si una conversación se borra mientras llega una respuesta, esa respuesta no se
+  guarda y la app lo dice. Lo que se acaba de preguntar sigue ahí al salir y volver con «Atrás». Abrir una
+  conversación no cambia la lista (conserva lo que trajo «Cargar más»), y la que está abierta aparece siempre en
+  ella, marcada.
+- [INT-11] Sin clave de OpenRouter se ve el aviso de [ARR-14] y no se puede enviar.
+- [INT-12] Cada persona puede hacer como mucho 20 preguntas por minuto y 200 al día; al pasarse, la app lo dice y no
+  envía la pregunta.
+- [INT-13] «Probar» de un agente interno responde como lo hará en «Asistentes», con el mismo formato, sin guardar
+  la conversación y sin «Simular canal».
+- [INT-14] La demo trae un agente interno («Asistente del equipo») con una base interna y un documento de ejemplo,
+  con acceso para todo el equipo.
+- [INT-15] Los agentes internos y las bases internas solo aparecen en Agentes y en Conocimiento para propietario y
+  administradores. Para el resto, un agente interno es como uno que no existe: tampoco se puede elegir para una
+  conversación, con el mismo aviso que un agente que no existe, y el aviso «Modelo de IA que se retira» ([MOD-06])
+  cuenta los agentes internos que usan el modelo sin nombrarlos ni enlazarlos.
+- [INT-16] En Informes, el coste de IA dice a propietario y administradores cuánto de él han gastado los agentes
+  internos y cuántas preguntas han respondido ([INF-07]). El resto ve el mismo coste total, sin esa parte.
+
+### Agenda
+
+- [AGD-01] La terminología se configura: Cita o Reserva; Profesional, Mesa, Sala o Box; Cliente, Paciente o
+  Comensal. La app y el agente usan esas palabras.
+- [AGD-02] Recursos: tipo (persona, sala o box, mesa o zona, equipo), nombre, color, activo, capacidad (1, o N
+  para mesas, aforo o clases), servicios que atiende, horario semanal con varios tramos por día y ausencias.
+- [AGD-03] Un recurso inactivo no acepta citas nuevas; las que tenía se mantienen.
+- [AGD-04] Servicios: nombre, categoría, duración, márgenes antes y después, precio orientativo (opcional),
+  descripción para el agente, recursos que lo hacen, personas mínimas y máximas, antelación mínima y máxima y
+  «Requiere confirmación manual».
+- [AGD-05] El horario del negocio y los festivos limitan todo: no hay huecos fuera de ellos aunque el recurso
+  tenga horario.
+- [AGD-06] Modos: por recurso individual (capacidad 1: peluquería, clínica, fisioterapia, taller) y por aforo
+  (capacidad N: restaurante por mesas, o por aforo total con duración de mesa, por ejemplo 90 min, y tamaño de
+  grupo; y clases).
+- [AGD-07] Los servicios que necesitan dos recursos a la vez (profesional y sala) quedan preparados, pero no se
+  ofrecen.
+- [AGD-08] Dado un servicio, un rango de fechas, un recurso (o cualquiera) y el número de personas, la app
+  devuelve los huecos libres cada cierto intervalo configurable (por ejemplo, 15 min).
+- [AGD-09] Los huecos respetan horarios, ausencias, bloqueos, citas pendientes y confirmadas (las canceladas y los
+  no presentados liberan el hueco), márgenes, antelación mínima y máxima y la zona horaria del negocio.
+- [AGD-10] Los días de cambio de hora, los huecos y las citas salen a su hora local correcta: ninguna hora se
+  pierde ni se duplica.
+- [AGD-11] En modo aforo, un hueco está libre mientras la suma de personas no supera la capacidad; un grupo fuera
+  del mínimo y el máximo del servicio, o mayor que la capacidad, no tiene huecos.
+- [AGD-12] Con «cualquiera», un hueco está libre si lo está algún recurso que hace el servicio, y al reservar se
+  asigna uno de ellos.
+- [AGD-13] No hay dobles reservas: si dos reservas piden a la vez el último hueco, solo entra una y la otra recibe
+  «Ese hueco ya no está libre» con alternativas.
+- [AGD-14] Cada cita guarda contacto, servicio, recurso, inicio y fin, personas, estado (pendiente, confirmada,
+  cancelada, completada o no presentado), origen (IA con su canal, persona o web), notas y autor.
+- [AGD-15] Cada cambio de una cita queda en su historial: quién, qué y cuándo.
+- [AGD-16] Vistas de día, semana, mes y por recurso (en columnas), con filtros por recurso, servicio y estado.
+- [AGD-17] Las citas se crean, se editan y se mueven arrastrando; si el destino no está libre, la app lo rechaza y
+  la cita vuelve a su sitio. Las personas siguen las mismas reglas de disponibilidad que la IA.
+- [AGD-18] Se pueden bloquear huecos, que dejan de estar disponibles.
+- [AGD-19] La ficha de la cita enlaza a su conversación y a su contacto.
+- [AGD-20] Hay pantallas de configuración de servicios, recursos, horarios, ausencias y recordatorios.
+- [AGD-21] El agente ofrece 2 o 3 huecos concretos y confirma con el cliente antes de reservar.
+- [AGD-22] Si el servicio requiere confirmación manual, la cita se crea pendiente, el agente se lo dice al
+  cliente y el equipo recibe un aviso.
+- [AGD-23] Cuando la IA crea, cambia o cancela una cita, lo confirma en el momento por el mismo canal.
+- [AGD-24] Recordatorios configurables, desactivados por defecto: hasta tres por cita, cada uno con su antelación, en
+  horas («2 horas antes», desde 15 minutos) o en días con su hora de envío («2 días antes, a las 10:00»), como mucho una
+  semana antes y sin repetir antelación, y sus canales. Se marcan los que se quieren entre WhatsApp, Telegram y correo,
+  y cada recordatorio tiene su mensaje para cada uno: por WhatsApp, una plantilla de utilidad aprobada con sus datos
+  asignados ([WA-58]), que sale por el número de esa plantilla; por Telegram, un texto y el bot por el que sale; por
+  correo, un asunto y un texto. Cada recordatorio sale por el primero de los canales marcados, en ese orden, que el
+  cliente puede recibir: tiene una vía en él (su WhatsApp o su teléfono, [WA-63]; haber escrito a ese bot, [TG-12]; su
+  email), el canal está conectado, no se ha dado de baja en él, no ha bloqueado ese bot ([TG-12]), ningún otro contacto
+  tiene un WhatsApp con su teléfono si esa es la vía ([WA-63]) y, por WhatsApp y por Telegram, no ha dicho que no
+  quiere «Avisos de sus citas» ([CTO-09]). El correo no depende de ese permiso, porque solo informa de su cita. Si el envío por un canal falla
+  (lo rechaza el canal, o Meta avisa de que no se pudo entregar, por ejemplo porque el teléfono no tiene WhatsApp), sale
+  por el siguiente canal marcado que el cliente puede recibir, si la cita aún no ha empezado; que no llegue el aviso de
+  «entregado» no cuenta como fallo, y uno que salió bien por un canal no sale por otro. Si la plantilla de WhatsApp
+  tiene una caducidad propia (de 30 segundos a 12 horas, [WA-59]), un recordatorio por WhatsApp no puede tener menos
+  antelación que ella (con la del modelo, 1 hora, como mínimo 1 hora antes; en uno en días, se compara con lo que va de
+  su hora de envío a la primera cita posible de ese día): la configuración lo comprueba y lo explica. Si no la tiene o la
+  app no la conoce (las traídas con «Sincronizar plantillas» suelen llevar la de Meta, 30 días), se puede usar igual,
+  pero la configuración avisa de que el recordatorio podría llegar después de la cita si el móvil está apagado y
+  recomienda ponerle una caducidad. La app trae un texto por defecto para el correo (asunto y texto) y para Telegram,
+  con los mismos datos que el modelo de WhatsApp ([WA-59]); en los sectores con datos de salud, sin el servicio
+  ([CUM-14]). La plantilla de WhatsApp se cobra: desde
+  el 1-10-2026, también cuando se envía dentro de la ventana de 24 h, y sin tramo gratuito ([WA-47]). El email sale de
+  forma que el cliente pueda contestar ([AGD-26]): si ya escribió a un buzón conectado
+  del negocio (Gmail, Outlook o IMAP), por ese buzón y como respuesta en su hilo, así que lo que conteste llega a esa
+  conversación de la bandeja; si no, desde el correo del sistema, con «Responder a» el buzón conectado del negocio o,
+  si no tiene ninguno, su email de contacto. En ese último caso la respuesta la lee una persona fuera de la app: el
+  texto dice cómo cancelar (respondiendo o llamando) y nunca promete la baja escribiendo «BAJA» por correo. Si el
+  cliente contesta a un correo que salió por el correo del sistema (también los de [ENV-04]) y su respuesta llega a un
+  buzón conectado, la app la reconoce como respuesta a ese correo y la lleva al contacto al que se envió; si el
+  remitente está verificado ([COR-25]), su email pasa a ser su identidad de correo «sin confirmar», con los mismos
+  límites que en [WA-63].
+- [AGD-25] Cada recordatorio sale una sola vez para cada hora que tenga la cita; no sale si la cita está cancelada,
+  completada, marcada como no presentado o es de prueba, ni por un canal en el que el cliente se ha dado de baja de todo
+  ([CUM-03]); un recordatorio cuyo momento ya había pasado cuando se reservó la cita no sale (el cliente acaba de recibir
+  la confirmación). Si la cita cambia de hora, cada recordatorio se calcula de nuevo para la hora nueva: si su nuevo
+  momento aún no ha llegado, vuelve a salir aunque ya hubiera salido para la hora anterior; si ya ha pasado, no sale.
+  Uno que no salió a su hora porque la app no estaba en marcha sale al volver solo si aún no ha llegado el momento del
+  siguiente recordatorio de esa cita y faltan más de 15 minutos para ella. Si un recordatorio no sale, queda en el
+  historial de la cita con el motivo (por ejemplo, «No quiere avisos de sus citas y sin email» o «La app no estaba en
+  marcha a su hora»).
+- [AGD-26] El cliente puede cancelar respondiendo: la IA se lo confirma y cancela; con la IA apagada, la
+  conversación espera a una persona. Si el recordatorio salió por email sin ningún buzón conectado, su respuesta
+  llega al email de contacto del negocio y la atiende una persona ([AGD-24]).
+- [AGD-27] Cada sector trae datos de agenda editables: Peluquería/Estética, Clínica dental, Clínica/Fisioterapia,
+  Restaurante, Taller, Academia/Clases y Otro.
+- [AGD-28] Las horas se ven y se escriben en la zona horaria del negocio.
+- [AGD-29] En la vista de semana, cada cita enseña su hora, el nombre del contacto y el servicio, y el profesional si
+  cabe, con el color de su profesional en una franja suave ([AGD-02]). Cuando no cabe todo (varias citas a la vez en
+  tableta, o una cita corta), enseña la hora y el nombre de pila (si en su única línea no caben los dos, el nombre de
+  pila: la hora ya la dicen las líneas de la rejilla); lo demás acaba en «…», nunca cortado a media palabra, y se ve
+  entero al pasar el ratón o al tocar la cita. Coinciden las citas que se solapan en algún momento: cuando en un
+  día coinciden más de tres, se ven tres y un «+N» que abre la lista de las demás, cada una con su ficha. Dentro del
+  horario, los huecos libres se distinguen a simple vista de lo ocupado y de lo cerrado: sin filtro de profesional, un
+  tramo se ve libre si al menos un profesional que trabaja a esa hora no tiene en él cita, bloqueo ni ausencia; las
+  ausencias de un profesional se ven como tales al filtrar por él o en la vista por recurso. Las citas se
+  siguen creando, moviendo y alargando como dice [AGD-17].
+- [AGD-30] En las vistas de día y de semana, un tramo en el que el negocio está cerrado ([AJU-03]) todos los días que se
+  ven, como el mediodía, se pliega en una franja estrecha que dice, por ejemplo, «Cerrado de 14:00 a 16:00», si dura al
+  menos 45 minutos (uno más corto ocupa casi lo mismo que la franja) y en él no hay ninguna cita, bloqueo ni ausencia
+  de las que se ven. La rejilla va de la primera hora de apertura a la última de cierre de esos días,
+  y se alarga para enseñar cualquier cita que caiga fuera: ninguna queda oculta.
+- [AGD-31] En la vista de mes, cada día dice cuántas citas tiene y lo lleno que está, con una barra que compara el
+  tiempo ocupado por las citas con el tiempo de trabajo de sus profesionales ese día (en modo aforo, la suma de
+  personas por la duración de sus reservas frente al aforo por las horas abiertas de ese día); las canceladas no cuentan, y con filtros cuenta solo lo filtrado ([AGD-16]). Al pulsar un
+  día se abre ese día. Los días cerrados y los festivos se ven apagados y dicen «Cerrado» (o «Cerrado · 2 citas» si
+  tienen alguna; en el móvil, donde no cabe, «Cerrado · 2»).
+- [AGD-32] Los recordatorios por WhatsApp (con una plantilla que tenga esos botones) y por Telegram llevan dos
+  botones: «Confirmo» y «Necesito cambiarla». En la configuración se elige qué botón de la plantilla hace cada cosa
+  (en la del modelo de la app, [WA-59], ya viene). Con «Confirmo», la cita queda «Confirmada por el cliente», el
+  cliente recibe «¡Gracias! Te esperamos.» (texto editable) y la IA no contesta a ese toque; un segundo «Confirmo» no
+  cambia nada ni envía otro «¡Gracias!». En una cita pendiente, «Confirmo» pone la marca, pero confirmarla sigue
+  siendo cosa de una persona ([AGD-22]). Con «Necesito cambiarla», el toque llega a la conversación como un mensaje del
+  cliente sobre esa cita: la IA le ofrece otros huecos o cancelarla, confirmándolo antes con él ([MOT-05]); con la IA
+  apagada, espera a una persona. El botón de un recordatorio de una cita que ya está cancelada, ya ha pasado o ha
+  cambiado de hora desde que se envió no cambia nada: llega como un mensaje más.
+- [AGD-33] «Confirmada por el cliente» se ve con una marca en la cita, en todas las vistas de la agenda y en su ficha,
+  y queda en su historial. Si la cita cambia de hora, la marca se quita.
+
+### Bandeja
+
+- [BAN-01] La bandeja reúne las conversaciones de todos los canales que el usuario puede ver.
+- [BAN-02] Filtros por canal, estado, asignado, IA o persona, sin leer y etiquetas; buscador por contacto y
+  texto.
+- [BAN-03] Tiene contador de no leídos, y lo nuevo aparece sin recargar en 5 s como máximo.
+- [BAN-04] Al abrir una conversación, se marca como leída.
+- [BAN-05] Cada mensaje muestra su canal, su autor (cliente, IA con el nombre del agente, persona con su nombre o
+  sistema) y su estado de entrega.
+- [BAN-06] Los audios tienen reproductor y transcripción; las imágenes y los documentos se ven o se descargan.
+- [BAN-07] Las respuestas de la IA muestran sus fuentes; las notas internas se distinguen a simple vista y nunca
+  se envían al cliente.
+- [BAN-08] En WhatsApp se ve si la ventana de 24 h está abierta y cuánto le queda; cerrada, solo se puede enviar
+  una plantilla.
+- [BAN-09] En correo se ve el hilo, y los borradores tienen Aprobar, Editar y Descartar.
+- [BAN-10] El interruptor de IA de la conversación está siempre a la vista, con el motivo si está en pausa.
+- [BAN-11] Cuando una persona escribe al cliente desde la bandeja, la IA se pausa en esa conversación 12 horas
+  (editable) y vuelve sola, salvo que alguien la reactive antes. Se ve «IA en pausa hasta …».
+- [BAN-12] Estados: abierta, pendiente de humano y resuelta, con persona asignada y etiquetas.
+- [BAN-13] Un envío fallido muestra el error y un botón para reintentar. Reintentar es enviar ahora: con la ventana de
+  24 h cerrada no se ofrece ni se acepta (en WhatsApp, salvo una plantilla), y la conversación dice por qué.
+- [BAN-14] Se pueden adjuntar archivos si el canal lo admite.
+- [BAN-15] Se ven el resumen de la conversación y el panel del contacto ([CTO-02]).
+- [BAN-16] Cuando una persona reactiva a mano la IA de una conversación (tras un traspaso, una pausa o apagarla) y el
+  último mensaje del cliente sigue sin respuesta, la IA lo responde en unos segundos, como a un mensaje nuevo y con las
+  mismas comprobaciones ([MOT-01], [MOT-03]). Si ya hay un borrador de la IA esperando revisión, no prepara otro.
+- [BAN-17] Cada conversación dice siempre, a simple vista, a qué canal pertenece: en la lista y en su cabecera, el
+  icono del canal con su tipo y su nombre en texto («Instagram · @peluqueria», «WhatsApp · Recepción»), y el filtro de
+  canal los nombra igual (encargo del propietario del 2026-10-16).
+- [BAN-18] En Instagram se ve si la ventana de 24 h está abierta y cuánto le queda; cerrada, no se puede enviar nada
+  hasta que el cliente vuelva a escribir ([IG-04]).
+
+### Traspaso
+
+- [TRA-01] El traspaso a una persona lo lanza la IA con su herramienta, una regla del agente (palabras clave,
+  varios «no lo sé» o un tema sensible) o una persona a mano.
+- [TRA-02] Con el traspaso, la conversación pasa a «Pendiente de humano» y la IA deja de contestar en ella hasta
+  que una persona la reactive.
+- [TRA-03] El cliente recibe el mensaje de traspaso del agente, distinto dentro y fuera de horario.
+- [TRA-04] La conversación se asigna por turnos entre las personas que pueden atender ese canal (nunca Solo
+  lectura), o queda sin asignar, según se configure.
+- [TRA-05] Se avisa en la app, por push y por email a quien diga la configuración del agente.
+- [TRA-06] Se mide el tiempo hasta la primera respuesta de una persona. Si la conversación se resuelve o se
+  reactiva la IA antes, el traspaso termina sin respuesta: deja de destacarse y una respuesta posterior no cuenta
+  como la suya.
+- [TRA-07] El motivo, el resumen y la urgencia se ven en la conversación; las urgentes se destacan en la lista.
+- [TRA-08] Cuando una conversación se resuelve, vuelve al modo IA para el siguiente mensaje del cliente.
+- [TRA-09] Siempre hay una vía a una persona: si el cliente la pide, se traspasa ([MOT-05], [CUM-02]).
+
+### Contactos
+
+- [CTO-01] Listado con buscador y filtros por etiqueta y canal; los contactos también se crean y editan a mano.
+- [CTO-02] Ficha: datos, identidades (canal e identificador), etiquetas, campos personalizados, citas (con «Nueva
+  cita»), permisos ([CTO-09]), consentimientos e historial de conversaciones.
+- [CTO-03] Una identidad (tipo de canal más identificador) pertenece a un solo contacto.
+- [CTO-04] La app señala posibles duplicados (mismo email o teléfono), pero nunca los fusiona sola.
+- [CTO-05] Al fusionar dos contactos queda uno con las identidades, conversaciones, citas, consentimientos (también los
+  permisos y las bajas) y resultados de envíos de ambos, y la fusión queda en el registro de actividad. Si uno de los
+  dos retiró un permiso o está de baja en un canal, el que queda también. Los enlaces «Darme de baja» de los correos ya
+  enviados a cualquiera de los dos siguen funcionando con el que queda.
+- [CTO-06] Se exporta el listado de contactos, y también todos los datos de un contacto (datos, conversaciones,
+  citas, consentimientos con sus permisos, y los recordatorios y envíos que recibió: cuándo, por qué canal y con qué
+  estado) en un archivo.
+- [CTO-07] Borrar un contacto, con confirmación, borra sus datos, mensajes y archivos, y anonimiza sus citas y sus
+  resultados en los envíos (sin su nombre ni su vía) para que los informes y los totales de cada envío cuadren; el
+  registro de actividad lo anota sin datos personales.
+- [CTO-08] Una baja se ve en la ficha; solo se quita si el cliente lo pide, y queda anotado quién y cuándo.
+- [CTO-09] Cada contacto tiene dos permisos: «Avisos de sus citas», que vale para WhatsApp y Telegram (el
+  recordatorio por correo no lo necesita, [AGD-24]), y «Novedades y publicidad», que vale para WhatsApp, Telegram y
+  correo. «Avisos de sus citas» se da por hecho (decisión 0030): lo tiene todo contacto mientras no diga que no lo
+  quiere, y la ficha lo enseña como «Sí, por defecto»; se quita en la ficha, al importar con un «no» ([CTO-11]) o lo
+  anota la IA cuando el cliente dice que no quiere avisos ([HER-15]).
+  «Novedades y publicidad», en cambio, solo lo tiene quien lo da. Cada uno guarda la fecha, cómo lo dio o lo retiró el
+  cliente (en persona, por escrito, en la web, en la conversación, importado u otro) y una nota opcional. Se marcan en
+  la ficha, a varios contactos a la vez desde Contactos (diciendo cómo los dieron) o al importar ([CTO-11]); la IA
+  solo anota los avisos de sus citas ([HER-15]). Cada cambio queda en sus consentimientos con
+  quién, cuándo y cómo ([CUM-13]). Las bajas, en cambio, son por canal ([CUM-03], [CTO-10], [WA-62]): «canal» es aquí
+  el tipo (WhatsApp, Telegram o correo), y una baja en cualquier número, bot o buzón de ese tipo para todo lo de ese
+  tipo. Marcar un permiso no quita una baja: mientras siga, no sale nada por ese canal y la ficha lo dice («Está dado
+  de baja en este canal»).
+- [CTO-10] Cuando un cliente pide por otra vía (por teléfono, en persona…) que no le escriban más, o que no le manden
+  novedades ni publicidad, una persona lo anota desde su ficha o desde la conversación, para un canal o para todos, y
+  queda quién, cuándo y cómo. Hay dos bajas: la de todo un canal ([CUM-03]), que para también la IA ([MOT-03]) y
+  muestra el aviso de [CUM-04], y la de novedades y publicidad de un canal ([WA-62], [ENV-06], [ENV-11]), que solo para
+  los envíos y las plantillas de marketing por ese canal ([WA-61]); los recordatorios de sus citas y la IA siguen. Las dos se quitan solo si el cliente lo
+  pide, como dice [CTO-08]; al marcar permisos a varios contactos a la vez, la app se salta a quien tiene una baja y lo
+  lista.
+- [CTO-11] Propietario y administrador importan contactos desde un Excel (.xlsx) o un CSV de hasta 5.000 filas y
+  5 MB: nombre, teléfono, email, etiquetas y, para cada permiso, «sí» o «no», su fecha y cómo lo dio el cliente. La app
+  reconoce las columnas por su título y ofrece para descargar una plantilla de Excel con las que entiende. Los teléfonos
+  sin prefijo toman el de España (+34), que se puede cambiar antes de importar; uno de 11 cifras o más ya lo lleva
+  (Excel guarda «+34 600 11 22 33» como 34600112233, sin el «+»). Antes de importar, la app enseña cuántas
+  filas entrarán, cuántas se saltan y los errores fila a fila: un teléfono o un email que no son válidos, una fila sin
+  teléfono ni email (aunque tenga nombre: no se le podría escribir ni reconocer al importarla otra vez), un permiso que
+  no dice «sí» ni «no» o la fecha de un permiso que no se entiende o aún no ha llegado. Si el archivo trae permisos,
+  pide confirmar que esos contactos los dieron de verdad; a un permiso sin fecha se le pone la de la importación y, sin
+  cómo se dio, «importado», con una nota con el nombre del archivo y quién lo confirmó. Como «Avisos de sus citas» se
+  da por hecho ([CTO-09]), un «no» en esa columna lo anota como retirado; vacía, el contacto lo tiene por defecto.
+- [CTO-12] Una fila con el mismo email o teléfono que un contacto que ya existe, o que una fila anterior del mismo
+  archivo, no se importa: se comparan como en los posibles duplicados ([CTO-04]: el email sin distinguir mayúsculas y
+  el teléfono por sus últimos 9 dígitos, así que «600 11 22 33» y «+34 600112233» son el mismo). Al terminar, la app
+  lista esas filas con el contacto o la fila con los que coinciden, y la lista se puede descargar. Importar dos veces el
+  mismo archivo no crea nada nuevo, y la importación nunca cambia un contacto que ya existía. Un contacto importado no
+  tiene identidades hasta que se le escribe y Meta lo confirma ([WA-63]) o contesta a un correo de la app ([AGD-24]): su
+  teléfono y su email son solo datos ([CAN-13]). Si escribe él
+  antes, entra como un contacto nuevo y la app lo señala como posible duplicado del importado ([CTO-04]).
+- [CTO-13] Cada importación queda en el registro de actividad (quién, cuándo, el nombre del archivo y cuántas filas
+  entraron, se saltaron o tenían errores), sin datos personales. El archivo no se guarda.
+
+### Envíos
+
+Mensajes que el negocio programa a los contactos que elige: novedades (un horario nuevo, un cierre) y publicidad.
+Todos van solo a quien dio el permiso «Novedades y publicidad» ([CTO-09]), y por WhatsApp con plantillas de marketing:
+Meta solo acepta como utilidad lo que habla de algo concreto de cada cliente o lo esencial (una emergencia, una
+interrupción del servicio), así que un aviso igual para muchos puede acabar como marketing, y el propietario decidió
+tratarlos todos así; además, los servicios de envío de correo piden permiso para escribir a muchos. Lo de una cita concreta lo hacen los recordatorios ([AGD-24]) y la bandeja. En esta sección, «canal» es el
+tipo: WhatsApp, Telegram o correo.
+
+- [ENV-01] «Envíos», en el menú, lista los envíos, del más reciente al más antiguo y de 25 en 25, con su estado (programado, enviando, en pausa, terminado o
+  cancelado), cuándo salen, por qué canales, a cuántos contactos y sus resultados; y, aparte, los automáticos y los
+  repetidos ([ENV-15], [ENV-16]).
+- [ENV-02] En Contactos se marcan contactos, o «todos los del filtro» (etiqueta y canal), y «Programar envío» pide un
+  nombre (solo para el equipo), los canales con el mensaje de cada uno y cuándo sale: ahora, o un día y una hora en la
+  zona del negocio que no hayan pasado. La lista de destinatarios queda fijada al programarlo (los marcados, o los que
+  tiene el filtro en ese momento; como mucho 20.000 contactos por envío) y desde entonces solo puede encoger.
+- [ENV-03] Se marcan los canales que se quieren entre WhatsApp, Telegram y correo, y a cada contacto le llega por el
+  primero de ellos, en ese orden, que puede recibir ([ENV-05]). Si el envío por ese canal falla (lo rechaza el canal o
+  Meta avisa de que no se pudo entregar), se prueba el siguiente canal marcado. A cada contacto le llega como mucho un
+  mensaje de cada envío.
+- [ENV-04] El mensaje de cada canal:
+  - Por WhatsApp, una plantilla de marketing aprobada, con sus datos asignados (los del contacto, o un texto fijo para
+    este envío) y con un botón de baja ([ENV-06]); sale por el número de esa plantilla. Solo por la API oficial (Meta o
+    YCloud): por código QR no se hacen envíos.
+  - Por Telegram, un texto y el bot por el que sale; lleva el botón «No quiero publicidad» ([ENV-06]).
+  - Por correo, un asunto y un texto. Sale por el correo del sistema ([AJU-06]) con el nombre y los datos de contacto
+    del negocio al pie y con «Responder a» el primer buzón conectado del negocio, como los recordatorios ([AGD-24]),
+    así que las respuestas llegan a la bandeja. Si no tiene ninguno, «Responder a» es su email de contacto y las
+    respuestas las lee una persona fuera de la app; la pantalla lo avisa al programarlo. Sin una dirección pública con
+    HTTPS (en local), no se ofrece el correo, porque su enlace de baja no funcionaría ([ENV-11]), y la pantalla lo
+    explica.
+
+  Los textos admiten el nombre del contacto y el del negocio.
+- [ENV-05] Por cada canal, el envío solo va a quien tiene en él una vía para escribirle (su WhatsApp o su teléfono,
+  [WA-63]; haber escrito a ese bot, [TG-12]; o su email), tiene el permiso «Novedades y publicidad» ([CTO-09]), no se
+  ha dado de baja en ese canal, ni de todo ni de novedades y publicidad ([CTO-10]), no recibió otro hace poco
+  ([ENV-06]), no ha bloqueado ese bot ([TG-12]), ningún otro contacto tiene un WhatsApp con su teléfono si esa es la
+  vía ([WA-63]) y, si el canal no es de demo, no es un contacto de la demo ni del simulador ([ENV-14]). Justo antes de
+  enviar cada mensaje, la app lo vuelve a comprobar; quien ya no cumple queda «No enviado», con el motivo. Si lo que
+  falla es que el canal no está conectado, el envío se para ([ENV-09]) y no se marca a nadie.
+- [ENV-06] Un mismo contacto recibe como mucho un envío cada 7 días (editable, [AJU-18]), sumando canales, envíos,
+  automáticos y repetidos. Se cuenta por días en la zona del negocio: se salta a quien recibió uno ese mismo día o en
+  los días anteriores hasta completar ese plazo (con 7, los 6 anteriores), contando desde que salió, así que un envío
+  semanal llega todas las semanas y dos envíos del mismo día no le llegan los dos. Todo envío deja
+  darse de baja de novedades y publicidad en ese canal: por correo, con el enlace de [ENV-11]; por WhatsApp, con el
+  botón de la plantilla ([WA-62]), y por eso solo se usan plantillas con un botón de baja (las del modelo de la app lo
+  traen; en las traídas de Meta o de YCloud se elige cuál es); por Telegram, con el botón «No quiero publicidad», que
+  hace lo mismo y se lo confirma. «BAJA» sigue dando de baja de todo en ese canal ([CUM-03]).
+- [ENV-07] Antes de programarlo, la app enseña cuántos lo recibirán por cada canal y cuántos no, con el motivo: sin
+  vía en ninguno de los canales marcados, sin permiso, de baja, envío reciente, canal sin conectar, ha bloqueado el
+  bot, otro contacto tiene un WhatsApp con ese teléfono ([WA-63]) o, con un canal que no es de demo, contacto de la
+  demo o del simulador. Los que solo
+  tienen teléfono cuentan por WhatsApp «si su teléfono tiene WhatsApp». Enseña también el coste estimado por WhatsApp,
+  con las tarifas de Ajustes ([AJU-09]; si falta alguna, lo dice), y, si hay que repartirlo, cuándo terminará
+  ([ENV-08]).
+- [ENV-08] Ritmo, para no poner en riesgo las cuentas:
+  - Por WhatsApp, en las 24 horas anteriores a cada mensaje (contadas hacia atrás, no por días) los mensajes fuera de
+    la ventana de 24 h nunca llegan a más destinatarios distintos que el límite de mensajes del portfolio ([WA-30],
+    [WA-48]), sumando lo que han enviado todos los números de ese portfolio en la app, recordatorios incluidos, y
+    dejando sitio a los recordatorios de las 24 horas siguientes: un envío nunca gasta el cupo que necesitan. La
+    pantalla avisa de que lo que se envíe con el mismo portfolio desde otras herramientas (por ejemplo, campañas desde
+    la consola de YCloud) también cuenta y la app no lo ve. Y como mucho 30 mensajes por minuto por número.
+  - Por Telegram, como mucho 20 por minuto.
+  - Por correo, como mucho los de Ajustes por hora y por día ([AJU-18]), dejando el resto del tope diario del correo
+    del sistema para los recordatorios, las invitaciones, las contraseñas y los avisos.
+  - Siempre dentro de las horas de envío ([AJU-18]). Lo que no cabe sigue cuando vuelve a haber sitio.
+- [ENV-09] El envío se para solo («En pausa», con el motivo) y avisa al propietario y a los administradores
+  ([AJU-08]) cuando: Meta pausa, desactiva o rechaza su plantilla; Meta restringe el número o la cuenta, o descarta
+  mensajes por calidad o por sospecha de spam; un canal marcado está desconectado o en error, al llegar la hora o con el
+  envío en marcha; el
+  servidor del correo del sistema rechaza los correos al recibirlos (usuario o contraseña no válidos, o cuenta
+  suspendida o bloqueada; los rechazos posteriores de Gmail, Outlook o Yahoo llegan al servicio de envíos, no a la
+  app); o, entre los últimos 50 mensajes de ese envío por un canal, más de 5 han fallado por un error del canal o del
+  servicio. No cuentan los «No enviado» que decide la app ni los fallos propios de un destinatario (un teléfono sin
+  WhatsApp, el límite de publicidad por persona de Meta, quien paró la publicidad o bloqueó el bot, un cliente al que el
+  negocio bloqueó en WhatsApp o uno de un país al que Meta no deja escribir a la cuenta). Se para en cuanto
+  pasa, aunque esté a mitad de una tanda, y el contacto con el que se notó (cuando lo que falla es la cuenta, la
+  plantilla o el correo del sistema) espera sin contar como intentado. Se reanuda a mano: entonces vuelve a comprobar
+  quién puede recibirlo, a quien ya falló no se le vuelve a intentar y los fallos de antes de reanudarlo ya no cuentan
+  para volver a pararlo.
+- [ENV-10] Un envío programado (o que la app paró a su hora antes de que saliera nada) se puede cambiar, y entonces
+  vuelve a quedar programado, o cancelar hasta que empieza; en marcha, se puede pausar (para también lo que se estaba
+  enviando en ese momento), reanudar o cancelar lo que falta. Lo que ya salió no se puede deshacer, y uno terminado
+  ya no se cancela. Al cancelarlo, a quien aún no le había salido queda «No enviado».
+- [ENV-11] Cada correo de un envío lleva al final «Darme de baja», que abre una página pública con el nombre del
+  negocio y un botón: al pulsarlo, el contacto queda de baja de novedades y publicidad por correo (los recordatorios
+  de sus citas siguen llegando) y queda anotado en sus consentimientos. Llevan además las cabeceras de baja en un clic
+  (RFC 8058) que piden Gmail y Yahoo, que hacen lo mismo sin abrir la página. La baja se aplica al momento (Gmail pide
+  como mucho 48 horas). El enlace es propio de cada destinatario, no lleva datos personales y uno inventado o de otro
+  contacto no hace nada.
+- [ENV-12] Resultados: cada contacto del envío con su canal y su estado: pendiente; enviado; entregado o leído, solo en
+  WhatsApp (Telegram no avisa a los bots de la entrega ni de la lectura, y los correos no se rastrean, así que allí se
+  queda en «enviado»); fallido, con el motivo en español; o no enviado, con el motivo. Además, los totales y el coste
+  estimado por WhatsApp. Las respuestas por WhatsApp, por Telegram y a un buzón conectado llegan a la bandeja como
+  cualquier mensaje y se atienden igual ([CAN-03]); la conversación muestra a qué envío responden.
+- [ENV-13] Crear, cambiar, programar, empezar, pausar (a mano o sola, con el motivo), reanudar, cancelar y terminar un
+  envío queda en el registro de actividad, con cuántos contactos y sin datos personales.
+- [ENV-14] Los contactos del simulador ([AJU-13]), las conversaciones de prueba ([PRU-05]) y los contactos que crea la
+  demo nunca reciben nada (recordatorios, plantillas ni envíos) por un canal que no sea de demo; en un canal de demo,
+  lo que «sale» solo se guarda ([ARR-11]).
+- [ENV-15] Envío automático tras la cita: nombre, cuántos días después (de 1 a 90) y a qué hora, qué servicios (todos o
+  algunos), los canales y el mensaje. Sale a quien tuvo una de esas citas (completada, o confirmada y ya pasada; nunca cancelada,
+  no presentado ni pendiente) si, al enviarlo, no tiene ninguna otra cita pendiente, confirmada o completada que
+  empiece después de esa; como mucho una vez por cita y con las mismas reglas de permisos, bajas, frecuencia, ritmo,
+  horas y paradas que cualquier envío. Se crea, se activa, se cambia (vale desde la siguiente vez), se pausa o se
+  borra; al crearlo queda activo, salvo que se diga lo contrario, y al activarlo solo cuenta para las citas que terminan
+  desde entonces. Sus resultados se ven en Envíos como un envío por día (si ese día no hay a quién, no hay envío); como
+  en [ENV-16], si la app estuvo parada todo el día en que tocaba, las citas de ese día no lo reciben.
+- [ENV-16] Envío repetido: cada semana (un día y una hora) o cada mes (un día del mes y una hora; si el mes no tiene
+  ese día, el último), con el mismo filtro que Contactos: una etiqueta y, si se quiere, un canal (sin etiqueta, todos
+  los contactos), calculado en ese momento (como mucho 20.000, los más antiguos, como cualquier envío; si había más, el
+  registro de actividad lo dice), y con las mismas reglas que un envío. Un canal que usa el filtro de un repetido no se
+  puede borrar mientras lo use. Cada vez que sale es un envío más en
+  la lista, con sus resultados. Si la vez anterior aún no ha terminado, la siguiente espera a que termine; las veces que
+  no salieron porque la app estaba parada no se recuperan: sale solo la siguiente. Se crea, se activa, se cambia (vale
+  desde la siguiente vez), se pausa o se borra.
+
+### Informes
+
+Cómo se cuenta cada cifra (periodo, conversaciones, resueltas por la IA, traspasos, tiempos y costes) está en
+`docs/decisions/0023-como-se-cuentan-los-informes.md`.
+
+- [INF-01] Los informes se ven por periodo (el mes actual por defecto), en la zona horaria del negocio.
+- [INF-02] Conversaciones por canal.
+- [INF-03] Porcentaje resuelto por la IA: conversaciones resueltas sin traspaso y sin mensajes de personas.
+- [INF-04] Traspasos, con sus motivos.
+- [INF-05] Tiempo hasta la primera respuesta humana: desde que el cliente pide una persona o se pasa la
+  conversación a una persona (con `transferir_a_humano`, una regla del agente o a mano) hasta el primer mensaje
+  de una persona en esa conversación; y porcentaje de traspasos atendidos en menos de 3 minutos ([CUM-11]).
+- [INF-06] Citas creadas por la IA.
+- [INF-07] Coste de IA por mes (el que indica OpenRouter) y coste estimado de WhatsApp por mes ([WA-47]).
+- [INF-08] Las conversaciones de «Probar agente» no cuentan.
+- [INF-09] Propietario y Administrador pueden descargar cada tabla de Informes en CSV.
+
+### PWA y avisos
+
+Detalles en `docs/notificaciones-push.md`.
+
+- [PWA-01] La app se puede instalar en el móvil o el ordenador del equipo, con el nombre y el logo del negocio, y
+  abre en la bandeja.
+- [PWA-02] La bandeja se usa con comodidad en el móvil.
+- [PWA-03] Cada persona activa los avisos push en cada dispositivo y puede desactivarlos. Las claves para los
+  avisos push se generan solas en la instalación.
+- [PWA-04] Un aviso push dice qué pasa y con qué contacto (por ejemplo, «Traspaso: Ana»), sin el texto del
+  mensaje.
+- [PWA-05] Una suscripción push caducada o rechazada se borra sola.
+- [PWA-06] La app tiene una lista de avisos con contador de no leídos.
+- [PWA-07] Los avisos también llegan por email cuando el correo del sistema está configurado.
+- [PWA-08] Las personas con rol Agente solo reciben avisos de sus canales.
+
+### Cumplimiento
+
+- [CUM-01] Aviso de IA en el primer mensaje de cada conversación (texto configurable por canal) y firma con aviso
+  de IA en los correos. Lo exige el art. 50 del Reglamento europeo de IA desde el 2-08-2026.
+- [CUM-02] Siempre hay una vía a una persona, en cualquier momento de la conversación ([TRA-09]). Lo exige la
+  política de WhatsApp y, en España, la Ley 10/2025, de servicios de atención a la clientela: prohíbe atender
+  solo con contestadores o medios automáticos (art. 8.1) y, si el cliente la pide por teléfono o por un medio
+  electrónico, obliga a darle atención personalizada; los bots conversacionales tienen que ofrecerla en
+  cualquier momento desde el inicio (art. 8.2). Se aplica a las empresas de servicios básicos (agua, gas y
+  electricidad, transporte de viajeros, servicios postales, comunicaciones electrónicas y servicios
+  financieros) y a las que tienen al menos
+  250 trabajadores, más de 50 millones de euros de volumen de negocio anual o más de 43 millones de balance
+  (art. 2); la mayoría de los negocios pequeños quedan fuera, pero la app lo cumple igual. Fuente:
+  https://www.boe.es/buscar/act.php?id=BOE-A-2025-26698 (consultada el 2026-09-26).
+- [CUM-03] Cuando un cliente escribe solo «BAJA» o «STOP» (sin distinguir mayúsculas ni tildes), queda dado de
+  baja en ese canal: recibe una confirmación, la IA deja de contestarle y no recibe recordatorios, plantillas ni
+  envíos por ese canal. Queda anotado en sus consentimientos. En el correo cuenta la primera línea del cuerpo (sin el
+  asunto ni el texto citado), y se da de baja quien envía ese correo. Si lo pide con otras palabras, la IA lo atiende
+  ([HER-16]); por otra vía, lo anota una persona ([CTO-10]): la política de WhatsApp y la LSSI obligan a respetar
+  cualquier petición de baja, no solo una palabra exacta.
+- [CUM-04] Si un cliente dado de baja vuelve a escribir, su mensaje llega a la bandeja para una persona, que puede
+  contestarle: sobre el cuadro de escribir, la bandeja avisa «Este cliente se ha dado de baja en este canal: la IA, los
+  recordatorios, las plantillas y los envíos están parados». Todo eso sigue parado en ese canal.
+- [CUM-05] La conservación se configura, con borrado o anonimización cada día. Por defecto: conversaciones 12
+  meses, audios 30 días después de transcribirlos, adjuntos 90 días, avisos en bruto de los canales 14 días
+  (entre 7 y 30) y resultados de los envíos por contacto 12 meses (después se anonimizan, sin el mensaje que llevaba
+  al contacto, y se borra el registro de sus correos; quedan los totales y el coste de cada envío, [ENV-12]).
+- [CUM-06] La limpieza diaria queda en el registro de actividad, con cuánto se borró o anonimizó.
+- [CUM-07] Se pueden exportar y borrar los datos de un contacto ([CTO-06], [CTO-07]).
+- [CUM-08] Las páginas legales públicas `/legal/privacidad`, `/legal/terminos` y `/legal/eliminacion-datos` se
+  generan desde Ajustes con los datos del negocio y se ven sin iniciar sesión. Existen en versión básica (datos
+  del negocio y textos por defecto) desde la fase 3, porque Meta pide sus direcciones para publicar la app
+  ([WA-21]); en la fase 7 sus textos se editan en Ajustes > Privacidad y legal ([AJU-07]).
+- [CUM-09] `docs/` incluye una plantilla de contrato de encargo del tratamiento marcada «revisar con un abogado».
+- [CUM-10] En el chat, los embeddings y la reordenación, cada petición a OpenRouter prohíbe a los proveedores
+  guardar o usar los datos (`data_collection: "deny"`); no se puede desactivar. La transcripción no admite esa
+  opción por petición: su privacidad sale del modelo elegido. El de por defecto,
+  `openai/whisper-large-v3-turbo`, solo tiene proveedores sin retención de datos, y Ajustes > IA avisa si el
+  elegido tiene alguno que no lo es ([AJU-04]). La guía pide además al negocio activar la privacidad en su
+  cuenta de OpenRouter ([ARR-23]). Detalles en `docs/integracion-openrouter.md` §9.
+- [CUM-11] Los informes miden el tiempo de [INF-05] y el porcentaje de traspasos atendidos por una persona en
+  menos de 3 minutos. La Ley 10/2025 exige a las empresas de su ámbito ([CUM-02]) que el 95 % de las
+  solicitudes de atención personalizada, por teléfono o por medios electrónicos como el chat (art. 8.2), y el
+  95 % de las llamadas (art. 10.3) se atiendan, de media, en menos de 3 minutos. Tienen 12 meses para
+  adaptarse desde su entrada en vigor el 28-12-2025, así que se exige desde el 28-12-2026. La app no tiene
+  teléfono: mide lo que llega por sus canales. Fuente: la de [CUM-02].
+- [CUM-12] En sectores con datos de salud (Clínica dental y Clínica/Fisioterapia), el asistente y Ajustes avisan
+  de que son datos especialmente protegidos y recomiendan activar «Sin retención de datos», acortar la
+  conservación, firmar el contrato de encargo y no pedir diagnósticos por chat.
+- [CUM-13] Los consentimientos (aceptación de los textos legales en el chat web, permisos de avisos y de publicidad,
+  bajas y altas) se guardan con fecha, canal y cómo se dieron: el RGPD (art. 7.1) obliga a poder demostrar que el
+  cliente consintió.
+- [CUM-14] En los sectores con datos de salud ([CUM-12]), los recordatorios llevan solo lo necesario para
+  identificar la cita (día, hora y centro, lo que nombra la guía de la AEPD para el sector sanitario, y el profesional),
+  sin síntomas, enfermedades ni tratamientos: el modelo «Recordatorio de cita» ([WA-59]) y los textos por defecto del
+  correo y de Telegram ([AGD-24]) no llevan el servicio, y si alguien lo añade, la app muestra junto a ese dato el aviso de esta regla, igual
+  que al escribir plantillas y envíos. La pantalla de envíos recuerda además que elegir a quién se envía por su dolencia
+  (por ejemplo, con una etiqueta «lumbalgia») necesita su consentimiento explícito para eso (RGPD art. 9.2.a) y que
+  WhatsApp no deja promocionar productos sanitarios (vendas, órtesis), sí los servicios.
+- [CUM-15] La pantalla de envíos resume las normas en pocas líneas, con enlace a la guía de envíos ([ARR-23]): la
+  publicidad por correo, WhatsApp o Telegram solo a quien la aceptó expresamente (LSSI art. 21), con una forma sencilla
+  y gratuita de darse de baja en cada mensaje (art. 22), y dejando claro que es publicidad, quién la envía y, si es una
+  oferta o un descuento, sus condiciones (art. 20; ya no hace falta poner la palabra «publicidad» al principio). La app
+  no usa la excepción de «clientes con servicios parecidos» del art. 21.2: no está claro si con ella habría que
+  consultar además la Lista Robinson (LOPDGDD art. 23.4), y Meta exige igualmente el permiso.
+
+### Seguridad
+
+- [SEG-01] Se guardan cifrados: tokens de Meta, App Secret y PIN; claves de OpenRouter y Mistral; credenciales
+  IMAP y SMTP; accesos de Google, Microsoft y Telegram; y cabeceras de las herramientas HTTP.
+- [SEG-02] Los secretos nunca llegan al navegador (como mucho, «••••1234») ni aparecen en los registros.
+- [SEG-03] Si falta la clave de cifrado, la app no arranca y dice por qué; si se perdió o cambió, los secretos
+  guardados se marcan como ilegibles y sus canales piden reconexión, sin romper el resto.
+- [SEG-04] Cada página, acción y ruta comprueba en el servidor quién es el usuario y si puede hacerlo; una llamada
+  directa sin permiso recibe un error y no cambia nada. Ocultar un botón no es la protección.
+- [SEG-05] Todo lo que llega (formularios, direcciones, cabeceras, archivos y avisos) se valida en el servidor; lo
+  que no es válido no se guarda. Antes de validarlo se limpia lo que la base de datos no admite: se quita el carácter
+  nulo y medio carácter suelto se guarda como «�».
+- [SEG-06] Una acción enviada desde otra web (CSRF) se rechaza.
+- [SEG-07] Hay límite de peticiones en el inicio de sesión, la recuperación de contraseña, las invitaciones, los
+  avisos de los canales, el chat web y todo lo que gasta IA.
+- [SEG-08] Las firmas y los secretos de WhatsApp, Telegram y el cron se comparan en tiempo constante.
+- [SEG-09] La dirección del cron sin el secreto correcto responde 401 y no hace nada.
+- [SEG-10] El registro de actividad anota lo que hacen las personas y la IA: entradas, cambios de rol y de
+  ajustes, conexiones y desconexiones de canales, exportaciones, borrados y usos de herramientas.
+- [SEG-11] Cabeceras de seguridad, cookies seguras y dependencias al día: `pnpm audit` sin fallos graves.
+- [SEG-12] El HTML de los correos se limpia antes de mostrarlo y nunca ejecuta código.
+- [SEG-13] Los archivos subidos se comprueban por tipo y tamaño.
+- [SEG-14] El usuario solo ve mensajes de error genéricos, y los registros no guardan claves ni datos personales.
+  Un fallo inesperado de una acción se anota sin la consulta ni sus valores: solo qué falló y en qué parte del
+  código.
+
+## Quién puede hacer qué
+
+Lo que no aparece aquí no está permitido.
+
+- [PER-01] Cada permiso se comprueba en el servidor y tiene su prueba ([SEG-04]).
+- [PER-02] «Sus canales»: un usuario con rol Agente solo ve y atiende las conversaciones de los canales que tiene
+  asignados, y los contactos con alguna conversación en ellos (y solo esas conversaciones). Si no tiene ningún
+  canal asignado, ve todos. Cuando se queda sin canales (en Canales o en Ajustes > Usuarios se le quita el último, o
+  se borra su único canal), la app avisa a quien lo ha hecho de que desde ese momento ve todos.
+- [PER-03] Solo lectura ve pero nunca cambia nada: cualquier intento se rechaza. No ve ningún secreto, ni siquiera
+  enmascarado, ni el registro de actividad, ni Ajustes salvo «Mi cuenta» y «Acerca de».
+- [PER-04] Supervisor no entra en Canales (solo ve el nombre de los canales en la bandeja) ni en los ajustes de
+  claves, IA, usuarios o correo del sistema.
+- [PER-05] Administrador no puede borrar, desactivar ni cambiar el rol o los datos del propietario, ni hacer
+  propietario a nadie.
+- [PER-06] Solo el propietario traspasa la propiedad ([USU-16]). Nadie cambia su propio rol, y el propietario no
+  puede borrarse ni desactivarse.
+- [PER-07] Solo propietario y administrador ven un secreto enmascarado («••••1234»); nadie lo ve entero.
+- [PER-08] Los agentes de IA no son usuarios: solo actúan con sus herramientas y sobre el contacto de su
+  conversación ([HER-04]).
+- [PER-09] Sin iniciar sesión solo se puede: usar el chat web (la propia conversación), ver las páginas legales,
+  abrir una invitación, recuperar la contraseña, consultar `/api/health`, usar el asistente mientras la
+  instalación está vacía, enviar avisos firmados de los canales y darse de baja de los envíos con el enlace de un
+  correo ([ENV-11]).
+
+«Sus canales» sigue la regla [PER-02]; «Ver» es solo mirar; «Con acceso» sigue la regla [INT-05].
+
+| Área y acción | Propietario | Administrador | Supervisor | Agente | Solo lectura |
+|---|---|---|---|---|---|
+| Bandeja: ver conversaciones, mensajes, fuentes y notas | Sí | Sí | Sí | Sus canales | Ver |
+| Bandeja: responder, enviar plantillas y adjuntos | Sí | Sí | Sí | Sus canales | No |
+| Bandeja: aprobar, editar o descartar borradores | Sí | Sí | Sí | Sus canales | No |
+| Bandeja: escribir notas internas | Sí | Sí | Sí | Sus canales | No |
+| Bandeja: pausar o reanudar la IA de una conversación | Sí | Sí | Sí | Sus canales | No |
+| Bandeja: traspasar a mano, cambiar estado y etiquetas | Sí | Sí | Sí | Sus canales | No |
+| Bandeja: asignar a cualquier persona | Sí | Sí | Sí | No; solo tomar para sí una sin asignar de sus canales | No |
+| Bandeja: elegir otro agente para una conversación | Sí | Sí | Sí | No | No |
+| Bandeja: convertir una respuesta en FAQ | Sí | Sí | Sí | No | No |
+| Contactos: ver fichas | Sí | Sí | Sí | Sus canales | Ver |
+| Contactos: crear y editar datos, etiquetas y campos | Sí | Sí | Sí | Sus canales | No |
+| Contactos: marcar permisos y dar de baja cuando el cliente lo pide | Sí | Sí | Sí | Sus canales | No |
+| Contactos: fusionar duplicados y quitar una baja (de todo o de novedades y publicidad) | Sí | Sí | Sí | No | No |
+| Contactos: exportar y borrar datos | Sí | Sí | No | No | No |
+| Contactos: importar desde Excel o CSV | Sí | Sí | No | No | No |
+| Envíos: ver los envíos, los automáticos, los repetidos y sus resultados | Sí | Sí | Ver | No | Ver |
+| Envíos: crear, programar, cambiar, pausar, reanudar y cancelar; y crear, activar, cambiar, pausar y borrar los automáticos y los repetidos | Sí | Sí | No | No | No |
+| Agenda: ver citas y disponibilidad | Sí | Sí | Sí | Sí | Ver |
+| Agenda: crear, editar, mover y cancelar citas | Sí | Sí | Sí | Sí | No |
+| Agenda: bloquear huecos y poner ausencias | Sí | Sí | Sí | No | No |
+| Agenda: configurar servicios, recursos, horarios, terminología y recordatorios | Sí | Sí | No | No | No |
+| Agenda: borrar las citas de prueba | Sí | Sí | Sí | No | No |
+| Agentes: ver configuración y versiones | Sí | Sí | Ver | No | Ver |
+| Agentes: crear, editar, borrar, recuperar versiones y archivos de contexto | Sí | Sí | No | No | No |
+| Agentes: probar agente | Sí | Sí | Sí | No | No |
+| Agentes: herramientas HTTP personalizadas | Sí | Sí | No | No | No |
+| Agentes internos: ver, crear, configurar, probar y decidir quién los usa | Sí | Sí | No | No | No |
+| Conocimiento: ver bases y documentos | Sí | Sí | Sí | No | Ver |
+| Conocimiento: crear, editar, borrar y reprocesar bases, documentos, webs y FAQ | Sí | Sí | Sí | No | No |
+| Conocimiento: probar búsqueda | Sí | Sí | Sí | No | No |
+| Conocimiento: ver y gestionar las bases internas | Sí | Sí | No | No | No |
+| Asistentes: preguntar a los agentes internos, y ver y borrar las conversaciones propias | Sí | Sí | Con acceso | Con acceso | No |
+| Canales: ver lista, estado y panel, sin credenciales | Sí | Sí | No | No | Ver |
+| Canales: crear, conectar, configurar, desconectar y borrar; agente activo, IA del canal y plantillas de WhatsApp | Sí | Sí | No | No | No |
+| Informes | Sí | Sí | Sí | No | Ver |
+| Informes: descargar cada tabla en CSV | Sí | Sí | No | No | No |
+| Ajustes: Negocio, Horario, Privacidad y legal, Notificaciones, Tarifas y Envíos | Sí | Sí | No | No | No |
+| Ajustes: IA (claves y modelos) y Correo del sistema | Sí | Sí | No | No | No |
+| Ajustes: Usuarios (invitar, roles, canales, desactivar, borrar y exigir 2FA) | Sí | Sí, salvo sobre el propietario | No | No | No |
+| Ajustes: traspasar la propiedad | Sí | No | No | No | No |
+| Ajustes: Registro de actividad | Sí | Sí | No | No | No |
+| Ajustes: Diagnóstico y simulador | Sí | Sí | No | No | No |
+| Mi cuenta, Acerca de y Ayuda | Sí | Sí | Sí | Sí | Sí |
+
+## Qué datos maneja
+
+Las tablas, sus campos y qué no se puede repetir están en `docs/modelo-de-datos.md`.
+
+- Del negocio: nombre, datos de contacto, logo, color, sector, horario, festivos, textos legales, tarifas de
+  WhatsApp y ajustes. Los escribe el equipo.
+- Del equipo: nombre, email, contraseña (solo su huella, nunca en claro), verificación en dos pasos, rol, canales
+  asignados, sesiones, dispositivos con avisos push y preferencias. Datos personales.
+- De los clientes (contactos): nombre, teléfono, email, identificadores de cada canal (BSUID y `wa_id` de
+  WhatsApp, email, visitante del chat web, Telegram, Instagram con su usuario), etiquetas, campos personalizados, permisos («Avisos de sus
+  citas» y «Novedades y publicidad», con cómo se dieron), consentimientos y bajas. Llegan con sus mensajes, los guarda la IA cuando el cliente
+  los da, los escribe el equipo o se importan de un Excel o un CSV (el archivo no se guarda). Datos personales.
+- Envíos: nombre, mensaje, canales, a quién van y cuándo, el resultado de cada contacto (estado y coste estimado) y
+  las reglas de los automáticos y los repetidos. Dicen a quién escribió el negocio: datos personales, que se
+  anonimizan a los 12 meses ([CUM-05]) o al borrar el contacto ([CTO-07]).
+- Conversaciones: textos, audios y sus transcripciones, imágenes, documentos, notas internas, resúmenes, estados
+  de entrega y coste estimado. Datos personales, y pueden contener cualquier cosa que el cliente escriba.
+- Citas y su historial. En clínicas dentales y de fisioterapia, las citas y las conversaciones revelan datos de
+  salud, que el RGPD protege especialmente: la app lo avisa y recomienda precauciones ([CUM-12]).
+- Conocimiento: documentos, webs y preguntas frecuentes del negocio, con sus fragmentos y embeddings. En
+  principio no son personales; la guía pide no subir datos de clientes.
+- Agentes: configuración, versiones y archivos de contexto.
+- Agentes internos: quién puede usar cada uno y las conversaciones de cada persona con ellos (preguntas, respuestas
+  y fuentes). Son datos personales del equipo y solo los ve quien los escribe ([INT-09]). Los documentos de una
+  base interna son del negocio y pueden ser confidenciales; la guía pide no subir datos personales (nóminas,
+  documentos de identidad) si no hace falta.
+- Registros de funcionamiento: avisos en bruto de los canales (llevan mensajes y datos personales, por eso se
+  borran pronto, [CUM-05]), uso de la IA (modelo, tokens, coste, tiempo y herramientas), fragmentos usados en cada
+  respuesta, traspasos, avisos, tareas en segundo plano y registro de actividad.
+- Secretos: tokens y claves de Meta (WhatsApp e Instagram), OpenRouter, Mistral, Google, Microsoft, IMAP/SMTP y
+  Telegram, y cabeceras de las herramientas HTTP. Van cifrados con la clave de cifrado de la instalación: si esa clave se pierde, no se
+  pueden recuperar y hay que volver a ponerlos.
+- Dónde se guarda: en local, en el ordenador donde corre la app (la base de datos integrada en `data/pglite` y los
+  archivos en `data/uploads`), sin cuentas. Publicada, en Supabase: la base de datos en su Postgres y los archivos en
+  un bucket privado de Supabase Storage, en la misma ciudad que las funciones de Vercel (Londres, como viene
+  preparado, o Irlanda). Supabase solo se usa en la app publicada.
+- Qué sale de la app: a OpenRouter y al proveedor del modelo, el contenido que la IA necesita (mensajes,
+  transcripciones, imágenes y fragmentos, también las preguntas del equipo a los agentes internos y los fragmentos
+  de las bases internas), prohibiendo en cada petición que lo guarden o lo usen; los audios que
+  hay que transcribir, al proveedor del modelo de transcripción, que por defecto solo usa proveedores sin
+  retención de datos, porque en la transcripción esa prohibición no se puede pedir ([CUM-10]); a Meta, Google,
+  Microsoft, YCloud, Telegram, Instagram o el servidor de correo, los mensajes de su canal; a Meta o YCloud, además, las
+  plantillas que se crean en la app; al servidor del correo del sistema, los correos de los envíos con el nombre y el
+  email de cada destinatario; a Mistral OCR, los PDF escaneados si hay clave; y a cada herramienta HTTP personalizada,
+  los datos que le pasa el agente. Nada más.
+
+## Qué queda fuera
+
+- Tech Provider y dar de alta números desde esta app: el alta en la API oficial se hace en Meta o en YCloud.
+- Embedded Signup: solo queda preparado el modo de conexión; se conecta a mano.
+- Otras APIs no oficiales de WhatsApp (Evolution, Whapi…) y otros proveedores intermediarios: la única vía no
+  oficial es el código QR con Baileys, con su aviso ([QR-01]), y el único proveedor, YCloud.
+- El historial anterior de los chats del móvil (coexistencia o código QR): solo se guardan los mensajes que llegan
+  desde que el número se conecta.
+- Los grupos de WhatsApp y vincular por código de emparejamiento en lugar de QR.
+- Messenger. De Instagram: los comentarios, las publicaciones y las historias; enviar imágenes o archivos (solo
+  texto); la etiqueta de agente humano para responder hasta 7 días después (exige la revisión de Meta); conectarlo con
+  una página de Facebook o con un inicio de sesión desde la app; y usarlo en recordatorios, envíos o agentes internos.
+- Multi-cliente: organizaciones, espacios de trabajo o varios negocios en una instalación.
+- Dokploy y GitHub: son el futuro y el código queda preparado para ellos.
+- De Supabase, los usuarios (Supabase Auth), el tiempo real (Supabase Realtime) y su API de datos: la app sigue con
+  Better Auth, con el sondeo y con sus propias rutas; de Supabase solo usa la base de datos, Storage y Cron.
+- Respuestas con voz.
+- Google Calendar e iCal.
+- Evaluación automática de las respuestas y del conocimiento.
+- Agente propio para fuera de horario (queda preparado).
+- Servicios que usan dos recursos a la vez (quedan preparados).
+- Publicar en Vercel, por ahora: la configuración y la guía quedan preparadas.
+- De los agentes internos: usarlos por WhatsApp o Telegram, que consulten la agenda o llamen a herramientas HTTP,
+  que propietario o administradores lean las conversaciones de otros, un rol solo para usarlos y el borrado
+  automático de sus conversaciones por antigüedad.
+- De los envíos (fases 11 a 15): elegir destinatarios por sus citas (fechas, servicio, sin venir desde…), salvo el
+  envío automático tras la cita; la excepción de «clientes con servicios parecidos» para la publicidad ([CUM-15]);
+  editar o borrar plantillas desde la app (se hace en Meta o en YCloud); la Marketing Messages API de Meta, que es
+  opcional y en la Unión Europea no mejora la entrega; envíos por el chat web (no se puede escribir a quien no está),
+  por WhatsApp con código QR (sin plantillas y con riesgo de bloqueo) y por SMS; saber si se abrió un correo o se
+  pulsó un enlace; secuencias de varios mensajes, pruebas A/B y felicitaciones de cumpleaños; avisar desde la agenda a
+  los clientes con cita un día concreto (por ejemplo, por un cierre imprevisto: se les escribe desde la bandeja); envíos
+  a quien no dio el permiso «Novedades y publicidad», aunque sean avisos generales; un selector de sector en la demo; e
+  importar citas o historiales.
+
+## Fases
+
+- [x] Fase 0 · Base: estructura, base de datos con migraciones, preparación automática con demo y usuarios de
+  prueba, inicio de sesión, roles e invitaciones, asistente de arranque, ajustes, cifrado de secretos, navegación
+  (Bandeja, Contactos, Agenda, Agentes, Conocimiento, Canales, Informes y Ajustes), README y `CLAUDE.md`, y la
+  configuración y la guía para Vercel con Turso y Blob (con Supabase desde la fase 8), sin publicar — se comprueba: un
+  clon limpio arranca con
+  `pnpm install && pnpm dev` y se entra con cada usuario del README; pasan las pruebas de permisos de los cinco
+  roles; `pnpm db:fresh` lleva al asistente y se completa; pasan lint, tipos, pruebas y compilación.
+  Comprobado el 2026-09-26: 978 pruebas de Vitest y 53 de Playwright en verde (inicio de sesión de los cinco roles,
+  permisos, invitaciones, recuperación, asistente en instalación vacía); copia limpia con `pnpm install && pnpm dev`
+  arranca sola y entran los cinco usuarios; revisión independiente y de seguridad corregidas.
+- [x] Fase 1 · Agentes y OpenRouter: clave, lista de modelos, editor de agentes (sin herramientas salvo el
+  traspaso), plantillas por sector y «Probar agente» — se comprueba: se conversa con un agente en «Probar» viendo
+  coste y tiempo (OpenRouter simulado en las pruebas y una prueba a mano con clave real); sin clave, aparece el
+  aviso y el agente no responde.
+  Comprobado el 2026-09-26: 1416 pruebas de Vitest y 78 de Playwright en verde, con lint, tipos y compilación
+  (en «Probar» el agente responde con OpenRouter simulado mostrando tokens, coste y tiempo; sin clave sale el aviso
+  y no se envía nada; modelos, traspaso, asistente y aviso de transcripción sin retención comprobados); revisiones
+  corregidas. La prueba a mano con una clave real queda para el propietario.
+- [x] Fase 2 · Bandeja, chat web y motor: base común de canales, chat web, bandeja, trabajo en segundo plano (al
+  contestar avisos, con el cron y con el lanzador local), agrupación y bloqueo, IA encendida o apagada, pausa y
+  traspaso, agente activo por canal y simulador — se comprueba: en `/widget-demo` responde el agente activo; al
+  cambiarlo, responde el nuevo; si escribe una persona, la IA se pausa; el traspaso avisa; varios mensajes
+  seguidos reciben una sola respuesta.
+  Comprobado el 2026-09-27: 1991 pruebas de Vitest y 91 de Playwright en verde, con lint, tipos y compilación (en
+  `/widget-demo` responde el agente activo y, al cambiarlo, el nuevo; una persona pausa la IA; el traspaso avisa y
+  también se pide con «Hablar con una persona»; tres mensajes seguidos, una sola respuesta; si la IA falla dos
+  veces, pasa a una persona y el error sale en Diagnóstico); revisiones de especificación, seguridad y aceptación
+  corregidas (lo que queda para decidir, en el informe de cierre).
+- [x] Fase 3 · WhatsApp: asistente, avisos con firma, recepción y envío, archivos y audios, estados, ventana de
+  24 h y plantillas, varios números, panel y modo pruebas, y las tres páginas legales en versión básica que
+  Meta pide para publicar la app ([CUM-08]) — se comprueba: pruebas con avisos realistas de Meta (texto, audio,
+  imagen, estado, contacto solo con BSUID, cambio de BSUID, duplicado y firma inválida) contra Meta simulado; el
+  simulador recorre el flujo completo en la demo; las páginas legales se ven sin iniciar sesión; la prueba con
+  el número de prueba de Meta queda escrita paso a paso en `docs/guia-whatsapp.md` para hacerla cuando la app se
+  publique.
+  Comprobado el 2026-09-27: 2714 pruebas de Vitest y 115 de Playwright en verde, con lint, tipos y compilación
+  (avisos firmados de Meta simulado con texto, nota de voz, imagen, estados con coste, solo BSUID, cambio de BSUID,
+  duplicado y firma falsa; un texto seguido de un tipo no admitido recibe una sola respuesta; páginas legales sin
+  sesión); revisiones de especificación, seguridad y aceptación corregidas (lo pendiente, en el informe de cierre).
+- [x] Fase 4 · Conocimiento: archivos de contexto y bases, procesado por pasos, búsqueda híbrida, herramienta de
+  búsqueda, fuentes en la bandeja y demo con embeddings precalculados — se comprueba: un PDF de más de 100 páginas
+  responde un dato citando la fuente; si el dato no está, el agente dice que no lo sabe y ofrece una persona; sin
+  clave, la búsqueda de la demo funciona por texto.
+  Comprobado el 2026-09-27: 2746 pruebas de Vitest y 116 de Playwright en verde, con lint, tipos y compilación (el
+  PDF de 120 páginas responde el dato de la pág. 112 citando documento y página; lo que no está da «no lo sé» y una
+  persona; sin clave, la demo se busca por palabras; con clave, «autobus» y «¿Cómo llego en autobús?» encuentran la
+  pág. 2 y el agente la cita); revisiones de especificación, seguridad y aceptación corregidas. Falta que el
+  propietario ejecute una vez `pnpm seed:embeddings` con su clave para guardar en el repositorio los embeddings de la
+  demo ([ARR-12]); hasta entonces se calculan en segundo plano al poner la clave.
+- [x] Fase 5 · Agenda: datos de la agenda, motor de disponibilidad con pruebas exhaustivas (cambios de hora y
+  aforo), pantalla, datos por sector, herramientas de citas, confirmaciones y recordatorios — se comprueba: con
+  peluquería, el agente ofrece huecos reales y reserva; dos reservas a la vez del último hueco dejan una sola cita;
+  con restaurante, respeta el aforo.
+  Comprobado el 2026-09-27: motor de disponibilidad con pruebas de cambios de hora y aforo; en la demo de peluquería
+  el agente ofrece huecos reales y reserva; dos reservas a la vez del último hueco dejan una sola cita; con
+  restaurante se respeta el aforo (4330 pruebas de Vitest y 163 de Playwright en verde).
+- [x] Fase 6 · Correo: Gmail, Outlook e IMAP/SMTP, filtros, hilos y borradores — se comprueba, con Google,
+  Microsoft y servidor de correo simulados: un correo entrante crea un borrador; al aprobarlo, sale en el mismo
+  hilo; se ignoran los boletines y las respuestas automáticas.
+  Comprobado el 2026-09-27: con Google, Microsoft y servidor de correo simulados, un correo entrante crea un
+  borrador, al aprobarlo sale en el mismo hilo y se ignoran boletines y respuestas automáticas; remitente verificado
+  por DMARC para las herramientas de citas.
+- [x] Fase 7 · Cumplimiento y producción: aviso de IA, bajas y conservación, exportar y borrar, páginas legales
+  completas con sus textos editables, informes, PWA y push, herramientas HTTP, repaso de seguridad, guías y
+  skills — se comprueba: un clon limpio en otra carpeta funciona siguiendo solo el README; siguiendo las guías
+  se pone en marcha un negocio real en local
+  (`pnpm db:fresh` y asistente); la guía de publicación en Vercel queda lista para comprobarla cuando se publique;
+  `pnpm audit` sin fallos graves.
+  Comprobado el 2026-09-27: clon limpio con `pnpm install && pnpm dev` y los usuarios del README; `pnpm db:fresh`
+  lleva al asistente; bajas, aviso de IA, conservación, exportar/borrar/fusionar, informes, PWA y push, herramientas
+  HTTP y seguridad con pruebas; `pnpm audit` sin fallos graves. Pendiente del propietario: publicar en Vercel y
+  generar `seed/fixtures/embeddings.json` con su clave.
+- [x] Fase 8 · Supabase: la base de datos pasa a Postgres en todas partes, con la integrada (PGlite) en local y en las
+  pruebas, sin cuentas ni Docker, y Supabase solo en la app publicada, en la misma ciudad que las funciones de Vercel;
+  Row Level Security en todas las tablas, sin políticas; un escritor a la vez, como con SQLite; los archivos de la app
+  publicada, en un bucket privado de Supabase Storage; el cron de cada minuto, en Supabase Cron; la búsqueda por
+  palabras, con las raíces del español; las seis migraciones de SQLite, sustituidas por una base de Postgres; y la
+  documentación, las guías y las skills al día (decisión 0024) — se comprueba: un clon limpio arranca con
+  `pnpm install && pnpm dev` y la demo sobre la base integrada, sin Supabase ni cuentas, y se entra con cada usuario
+  del README; todas las pruebas de Vitest y de Playwright pasan sobre la base integrada, sin tocar Supabase; contra un
+  proyecto de Supabase del propietario, las migraciones se aplican, la demo se carga, y funcionan el inicio de sesión,
+  la bandeja, la búsqueda del conocimiento, una reserva y la subida de un archivo (que queda en el bucket privado);
+  todas las tablas tienen Row Level Security y el Security Advisor de Supabase no da errores ni avisos (solo los
+  informativos «RLS Enabled No Policy», que son lo esperado); pasan lint, tipos, pruebas y compilación, y `pnpm audit`
+  sin fallos graves.
+  Comprobado el 2026-09-27: clon limpio con `pnpm install && pnpm dev` que carga la demo en `data/pglite` y responde
+  en /api/health y /login sin Supabase; 4.399 pruebas de Vitest y las 163 de Playwright sobre la base integrada (los
+  usuarios de la demo entran en ellas); en el proyecto «Agentes WhatsApp» (Londres), migraciones 0000–0002, 54
+  tablas con Row Level Security y el Security Advisor solo con los avisos informativos; demo cargada (Peluquería
+  Aurora) y sus 4 archivos en el bucket privado `dominia-archivos`; publicada en https://dominia-agentes.vercel.app
+  (funciones en `lhr1`, rol de base `dominia_app` sin permisos para cambiar tablas): /api/health «ok» contra
+  Supabase y el cron de Supabase recibe 202 cada minuto; `pnpm audit`, 1 aviso moderado solo de desarrollo. Queda para
+  el propietario, en la app publicada: entrar con los usuarios de la demo, una reserva y la subida de un archivo.
+- [ ] Fase 9 · Telegram y las tres vías de WhatsApp (encargo del propietario del 2026-10-09, en una sola fase): el
+  canal de Telegram, que estaba previsto (el bot del negocio por su token, con avisos o en «modo local» sin dirección
+  pública; decisión 0025), y dos formas más de conectar un número de WhatsApp además de la API oficial de Meta, que
+  no cambia: YCloud con coexistencia y código QR con Baileys, no oficial (decisión 0026). Añadir canal enseña las
+  tres con el logotipo de WhatsApp y lo que las distingue — se comprueba: con Telegram, YCloud y la conexión de
+  WhatsApp simulados, cada vía conecta, recibe (texto, nota de voz, imagen y documento), responde una sola vez y se
+  desconecta; un aviso de YCloud sin su firma se rechaza sin guardar nada; un mismo número no se conecta dos veces
+  por ninguna vía; lo que el negocio escribe desde su móvil entra en la conversación y pausa la IA; la sesión del
+  código QR se guarda cifrada, sobrevive a un reinicio y se borra si el móvil la cierra; el código QR no deja seguir
+  sin aceptar su aviso ni en Vercel; pasan lint, tipos, pruebas y compilación.
+  Construida y comprobada el 2026-10-09: 4.588 pruebas de Vitest en verde y 1 que ya fallaba antes de la fase
+  (`src/instrumentation.test.ts`, comprobado en una copia limpia de `main`); las 170 de Playwright en verde (169 en
+  la pasada completa y la que faltaba, corregida, al repetirla); lint sin errores, tipos y compilación. A mano, en
+  local: Añadir canal con las tres vías; el asistente del código QR recibe un código real de WhatsApp, lo renueva y,
+  al caducar, ofrece otro, sin dejar el código en los registros; la app compilada arranca con la librería cargada.
+  Migración 0003 (tabla `whatsapp_qr_keys`), solo aditiva, aplicada a la base local; **falta aplicarla a la base
+  publicada antes de publicar esta versión**. Con permiso del propietario se aplicaron los parches de Next.js
+  (16.3.6 → 16.3.8) y de sharp (0.35.4 → 0.35.5) y se quitó la excepción D1, que ya no hacía falta; se repitieron
+  todas las pruebas con ellos: Vitest igual (4.588 y la que ya fallaba) y Playwright 169 de 170 en la pasada
+  completa. La que falló, `e2e/demo/knowledge-demo-key.spec.ts`, no es de esta fase y sale al azar: para «¿Cómo llego
+  en autobús?» dos fragmentos de la demo empatan en la búsqueda por palabras y el desempate es el id del fragmento,
+  que la demo crea al azar en cada pasada; repetida sin cambiar nada, pasa. Queda anotada para arreglarla aparte.
+  `pnpm audit` pasa de 12 avisos a 5 (3 altos y 2 moderados), ninguno de las
+  dependencias nuevas y todos de herramientas de desarrollo o sin arreglo publicado (`braces`, `source-map-js`,
+  `@modelcontextprotocol/sdk`, `esbuild` y `sprintf-js`). Para cerrar la fase falta, y es del propietario: probar
+  con un bot de Telegram, una cuenta de YCloud y un número real por código QR.
+
+- [x] Fase 10 · Agentes internos (encargo del propietario del 2026-10-09, en una sola fase): agentes para el equipo
+  que responden con los documentos del negocio, bases de conocimiento internas que un agente de clientes nunca puede
+  usar, acceso por agente («Todo el equipo» o personas concretas), el apartado «Asistentes» con las conversaciones
+  de cada persona, que solo ve ella, y su coste en Informes (decisión 0027) — se comprueba: el propietario crea un
+  agente interno con una base interna y un PDF y da acceso a una persona; esa persona pregunta en «Asistentes» y
+  recibe la respuesta con su documento y su página; otra sin acceso no lo ve ni puede usarlo por su dirección; el
+  supervisor no ve el agente interno ni la base interna; un agente de clientes no puede usar la base interna, ni
+  desde la pantalla ni forzándolo; un agente interno no se puede activar en un canal; sin clave sale el aviso y no
+  se envía; pasan lint, tipos, pruebas y compilación.
+  Construida y comprobada el 2026-10-09: 4.684 pruebas de Vitest en verde y 1 que ya fallaba antes de la fase
+  (`src/instrumentation.test.ts`); 173 de las 174 de Playwright en verde en la pasada completa; lint sin errores,
+  tipos y compilación. La que falla, `e2e/demo/knowledge-demo-key.spec.ts`, es la que la fase 9 dejó anotada y no es
+  de esta fase: medido en 8 cargas de la demo, las páginas 1 y 2 de «Normas de citas y cómo llegar» empatan en la
+  búsqueda por palabras para «¿Cómo llego en autobús?» y el desempate, el id del fragmento, cae 4 veces a cada lado;
+  repetida sola sin cambiar nada, falla una vez y pasa la siguiente. La aceptación
+  (`e2e/demo/internal-agents.spec.ts`) sube un PDF de 120 páginas a una base interna y la respuesta en «Asistentes»
+  cita el documento y la página 112; `e2e/demo/assistant-history.spec.ts` pulsa «Cargar más» y «Cargar mensajes
+  anteriores». A mano, en local: crear un agente interno y una base interna, Acceso, Agentes en dos grupos y
+  «Asistentes» en ordenador, móvil y modo oscuro, con el aviso de falta de clave. Revisión independiente
+  (`docs/review.md`): sin fallos graves; se corrigió lo que señaló: el aviso al borrar un agente interno, dos textos
+  que ofrecían pasar con una persona, «Cargar más» en las conversaciones y en los mensajes, el tooltip de la
+  papelera, la prueba de [INT-03] en los asistentes de Telegram, YCloud y código QR, y las líneas que faltaban en
+  [INT-01], [INT-02], [INT-04], [INT-07] y [INT-10]. Migración 0004 (tres tablas y cuatro columnas), solo aditiva,
+  aplicada a la base local; **falta aplicarla, con la 0003, a la base publicada antes de publicar esta versión, y
+  comprobar que el usuario `dominia_app` tiene permiso sobre las tablas nuevas** (`docs/guia-despliegue.md`,
+  apartado 2). `pnpm audit`: los mismos 5 avisos de la fase 9, sin dependencias nuevas. Queda para el propietario:
+  probarlo con su clave de OpenRouter y un documento suyo.
+  Repaso del 2026-10-09, a petición del propietario («repásala, busca fallos o mejoras e impleméntalo todo»), con
+  tres revisiones independientes (seguridad, lógica y pantallas). Sin fallos graves de seguridad. Lo corregido, cada
+  cosa con su prueba: en «Asistentes», la pantalla ya no retiene la navegación mientras responde, lo preguntado
+  sigue ahí al volver con «Atrás», la lista no se reinicia al abrir una conversación, el campo se ve al abrir en el
+  móvil, Intro no envía en pantallas táctiles, los avisos de fallo dicen qué puede hacer cada persona y las fuentes
+  se presentan como lo consultado ([INT-07], [INT-10]); el modelo recibe preguntas con su respuesta y sabe qué
+  formato se ve; «Probar» pinta igual que «Asistentes» ([INT-13]); la tarjeta dice quién tiene acceso y guardar el
+  acceso no toca a quien no está en la lista ([INT-05]); lo interno no se nombra a quien no lo ve y el desglose de
+  Informes es para quien lo gestiona ([INT-15], [INT-16]); un fallo inesperado de una acción ya no deja la consulta
+  y sus valores en el registro ([SEG-14]). En el conocimiento: la página de un dato al final de una página se cita
+  bien ([CON-10]; los documentos ya subidos, tras «Reindexar»), la búsqueda por palabras pone delante el fragmento
+  con más palabras de la pregunta ([CON-16]), la pantalla dice el máximo real de un archivo con la app en Vercel
+  ([CON-04]) y la ficha de un documento avisa de las páginas sin texto ([CON-06]). Comprobado el mismo día: 4.709
+  pruebas de Vitest en verde y la misma que ya fallaba (`src/instrumentation.test.ts`: la prueba da por hecho que
+  cada prueba es un arranque nuevo, y desde «Vercel: nada de trabajo a medias» el mantenimiento se ejecuta una vez
+  por proceso; no se ha tocado, porque cambiar una prueba pide permiso); las 174 de Playwright en verde, también
+  `e2e/demo/knowledge-demo-key.spec.ts`, que fallaba la mitad de las veces por el empate de la búsqueda por
+  palabras y ahora pasa 5 de 5 con la demo recién cargada; lint sin errores, tipos y compilación. Sin migración ni
+  dependencias nuevas; `pnpm audit`, los mismos 5 avisos. Queda para otra sesión, con su plan: subir archivos de más
+  de 4 MB con la app en Vercel (directos a Supabase Storage), leer con OCR las páginas escaneadas de un PDF que
+  también tiene texto, y que un fallo al pintar una página tampoco deje valores en el registro.
+  Repaso de presentación del 2026-10-10, a petición del propietario («analiza cada pantalla y mejora… la
+  presentación de la información para que los usuarios la puedan utilizar fácilmente sin abrumarse ni perderse, pero
+  sin quitar funcionalidad»): recorridas todas las pantallas en ordenador, tableta y móvil. No se ha quitado ninguna
+  función ni cambiado ninguna prueba existente; sin migración ni dependencias nuevas. Lo cambiado está descrito en
+  `DESIGN.md` y `docs/pantallas.md`: la conversación de la bandeja cabe en la pantalla (cabecera en dos o tres
+  líneas, la ficha del contacto como columna solo si la conversación conserva 480 px, la lista aparte en tableta, el
+  cuadro de escribir siempre a la vista y el resumen largo de un traspaso con «Ver todo»); el aviso de la clave de
+  OpenRouter ocupa una franja; en un canal, «Estado» y «Agente e IA» van arriba y lo de consulta, plegado, y su
+  tarjeta enseña entero el número o el correo; Ajustes agrupa su menú, lo deja a la vista al bajar e incluye «Mi
+  cuenta»; Ayuda agrupa sus guías; el registro de actividad cabe en su columna y dice los detalles en español;
+  Ajustes › IA va en tarjetas; Diagnóstico empieza por un resumen ([AJU-11]); los servicios de la agenda van en
+  columnas; en el editor de un agente, las herramientas van por grupos, Traspaso por secciones y Conocimiento empieza
+  por las bases; y en el móvil la Agenda enseña antes el calendario. Comprobado el mismo día: lint sin errores,
+  tipos, las pruebas de Vitest en verde salvo la que ya fallaba (`src/instrumentation.test.ts`) y las de Playwright
+  en verde, con `e2e/demo/screen-layout.spec.ts` nueva. Detectada, sin tocarla, una prueba que depende del reloj
+  (`src/data/whatsapp-account-alerts.test.ts`: guarda dos avisos seguidos y espera su orden; si caen en el mismo
+  milisegundo, falla). `pnpm audit`, los mismos 5 avisos.
+
+Fases 11 a 15: encargo del propietario del 2026-10-16, con la entrevista del mismo día (decisión 0028). Sus palabras:
+«Adaptar la app a una clinica de fisioterapia pero que sirva viéndose la funcionalidad equivalente a cualquier tipo de
+nicho, es decir, el usuario debe ver que es para fisioterapia pero fácilmente entender que se aplica a peluquerías,
+clinicas, despachos, etc. · La vista de calendario, especialmetne semanal, pero tambien mensual se ve algo compleja y
+pesada cuando hay muchas citas, pon esa interfaz mucho más bonita y amigable porfa · El sistema debe permitir gestionar
+y programar recordatorios automatizados de citas y también cualquier tipo de envío de mensajes ya sea programandolos
+tú, permitir seleccionar un número de contactos que tu quieras, o programar recordatorios de citas para días antes de
+las citas programadas. Todo esto debe permitir ese envío en lso distintos canales, por ejemplo en whatsapp con las
+plantillas de meta (ya sabes, que cumpla con esto) o por email, pero todo bien planteado sin baneos.» En la entrevista
+añadió importar contactos de un Excel, los envíos automáticos y repetidos y Telegram, y crear las plantillas desde la
+app. Las normas de Meta, YCloud, Telegram, Gmail, Outlook, Yahoo, la LSSI y la AEPD se comprobaron en sus fuentes
+oficiales el 2026-10-16 y quedan en los documentos de integración de cada fase.
+
+- [x] Fase 11 · Demo de fisioterapia y calendario más ligero: [ARR-06], [ARR-10] y [AGD-29]–[AGD-31]. Las pruebas de
+  Playwright que ya existen siguen sobre la peluquería, que su preparación pasa a cargar indicándolo
+  (`--sector=peluqueria`), así que no se cambia ninguna; las nuevas usan la demo de fisioterapia en una base de pruebas
+  aparte, como ya se hace con la del restaurante, o citas preparadas para la prueba. La línea de `pnpm seed` de
+  `AGENTS.md` («peluquería si no se indica sector») se pone al día enseñándole antes el cambio al propietario. Se
+  comprueba: `pnpm db:reset` deja la clínica «Fisioterapia Movimiento» y `pnpm seed --sector=peluqueria` la peluquería;
+  en una semana con muchas citas, cada cita enseña su hora, su nombre y su servicio, se ven los huecos libres y, con
+  más de tres a la vez (con un negocio de cuatro profesionales o más), «+N» abre la lista de las demás; el cierre del
+  mediodía se ve plegado y ninguna cita queda oculta; el mes dice cuántas citas tiene cada día y lo lleno que está, y al
+  pulsar un día se abre ese día. Comprobado el 2026-10-16: `pnpm db:reset` deja «Fisioterapia Movimiento» con Álvaro
+  Díaz y Nuria Campos; lint sin errores (su único aviso, en `render-app-icon.tsx`, es de antes), tipos, 4.791 pruebas de
+  Vitest en verde salvo la que ya fallaba (`src/instrumentation.test.ts`) y 178 de Playwright, con dos nuevas:
+  `e2e/demo/agenda-calendar-light.spec.ts` (sobre citas que prepara la propia prueba: hora y nombre a palabras enteras,
+  el mediodía plegado entre ellas y el mes con «2 citas» que abre el día) y `e2e/restaurant/agenda-week-overflow.spec.ts`
+  («+N» con cuatro reservas a la vez). En la última vuelta completa falló una prueba porque la nueva gastaba las
+  peticiones a la IA del propietario; ahora la hace el administrador y las dos pasan juntas. Ninguna prueba de Playwright
+  cambia; cambian, porque cambian sus reglas, las de Vitest de la carga de la demo, `db:reset` y la preparación
+  ([ARR-06]; las de la peluquería la piden con `--sector=peluqueria`), la de los límites de la rejilla ([AGD-30]) y la
+  del mes ([AGD-31]). Sin migraciones ni dependencias nuevas; `pnpm audit`, los mismos 5 avisos. La revisión no vio
+  fallos graves ni de seguridad; se corrigió lo que vio: el mediodía ya no se pliega con una ausencia o un bloqueo
+  dibujados en él, la prueba del calendario mira lo que se ve en la cita, y tienen prueba quién cuenta para los huecos
+  libres, cuándo se piden aparte las citas ocultas por los filtros y cuándo se dibuja una ausencia. Se precisaron en
+  [AGD-29]–[AGD-31] tres detalles: la cita de una sola línea muy estrecha enseña el nombre de pila, solo se pliega un
+  cierre de 45 minutos o más y el mes en el móvil dice «Cerrado · 2».
+- [x] Fase 12 · Permisos, plantillas desde la app y recordatorios con confirmación: [CTO-02], [CTO-05]–[CTO-10] (lo de
+  los permisos y las bajas), [CUM-03], [CUM-04], [CUM-13], [CUM-14] (salvo la pantalla de envíos), [WA-57]–[WA-62],
+  [YC-07], [YC-11], [TG-12] y [TG-13] (los recordatorios), [AGD-24]–[AGD-26], [AGD-32], [AGD-33], [HER-01], [HER-15],
+  [HER-16], [AJU-08] (salvo «envío parado»), [ENV-14] (que los contactos de la demo y del simulador no reciben
+  recordatorios ni plantillas por un canal real), de [ARR-23] las guías de WhatsApp (plantillas desde la app) y de Agenda
+  (recordatorios), la parte de los recordatorios de [ARR-25] y, en «Quién puede hacer qué», las filas de permisos y bajas
+  y la de Canales (plantillas). La vía «su teléfono» de [AGD-24] llega con [WA-63] en la fase 13, y con ella que la
+  app reconozca la respuesta a un recordatorio que salió por el correo del sistema ([AGD-24], [AGD-26]): hasta
+  entonces, el recordatorio por WhatsApp solo va a quien ya tiene identidad de WhatsApp, los demás pasan al siguiente
+  canal marcado, y esa respuesta llega como un contacto nuevo. Se comprueba, con Meta, YCloud y Telegram simulados: se crea desde la app la plantilla «Recordatorio de cita»
+  y queda aprobada como utilidad; una cita con dos recordatorios los recibe a su hora, y vuelve a recibirlos si cambia
+  de hora; sin el permiso de avisos le llegan por correo, y si WhatsApp falla, por el siguiente canal; «Confirmo» la
+  marca «Confirmada por el cliente» y «Necesito cambiarla» hace que la IA ofrezca otros huecos; al reservar por
+  WhatsApp, la IA pregunta si puede avisar y lo anota con la pregunta y la respuesta; «no me mandéis más mensajes» da de
+  baja; sin permiso, la bandeja no deja enviar una plantilla hasta anotarlo. Comprobado el 2026-10-16, con Meta, YCloud,
+  Telegram y la IA simulados: lint sin errores (su único aviso es el de antes), tipos, todas las pruebas de Vitest en
+  verde salvo la que ya fallaba (`src/instrumentation.test.ts`; a veces también una de `whatsapp-account-alerts`, las
+  dos apuntadas aparte) y las de Playwright, con tres nuevas: «Nueva plantilla» en el número de la demo la deja aprobada
+  y en uno de Meta la manda a revisar con sus datos con nombre, sus botones y su caducidad
+  (`e2e/demo/whatsapp-templates.spec.ts`); al reservar por WhatsApp la IA pregunta si puede avisar y anota el «Sí»
+  ([HER-15]), y «no me mandéis más mensajes» da de baja con la única confirmación ([HER-16]); la bandeja no deja enviar
+  la plantilla hasta anotar el permiso ([WA-61]). En Vitest: dos recordatorios a su hora y otra vez si la cita cambia de
+  hora, sin permiso por correo, el siguiente canal si WhatsApp falla, «Confirmo» la marca «Confirmada por el cliente» y
+  «Necesito cambiarla» hace que la IA ofrezca otros huecos de esa cita. Migración 0005, solo añade; `pnpm audit`, los
+  mismos 5 avisos. La revisión no vio fallos graves ni de seguridad; se corrigió lo que vio: con muchas citas la ronda
+  ya no deja fuera las últimas, aviso de datos de salud al dar el servicio a un dato de la plantilla, un Agente de otros
+  canales ve los permisos del contacto, la fecha «hoy» de madrugada, «Levantar baja» guarda cómo lo pidió el cliente, la
+  exportación lleva los recordatorios, los errores de las pantallas nuevas siguen `DESIGN.md` y las pruebas que
+  faltaban ([ENV-14], [WA-60], [TG-12] en los recordatorios). Se añadió un límite de 20 plantillas nuevas por hora y
+  persona. Se precisaron [COR-25] y [HER-16] (en un correo no verificado la IA no da de baja) y se pasó a la fase 13
+  reconocer la respuesta a un recordatorio del correo del sistema. Cambian, porque cambian sus reglas, las pruebas de
+  la carga de la demo ([ARR-25]), las de los recordatorios y su pantalla (varios por cita), las de los permisos y bajas
+  y la de las herramientas de la IA («dar_de_baja» siempre encendida), y en Playwright las de recordatorios, bandeja
+  de WhatsApp, bajas, contactos y «Probar».
+- [x] Fase 13 · Importar contactos: [CTO-11]–[CTO-13], [WA-63], de [AGD-24] y [AGD-26] reconocer la respuesta a un
+  recordatorio del correo del sistema (con su identidad de correo «sin confirmar») y la fila de importar de «Quién
+  puede hacer qué». Se comprueba: un Excel de prueba con filas buenas, repetidas y con errores importa las buenas con
+  sus permisos (con fecha y origen), salta las repetidas y lista los errores; importarlo otra vez no crea nada; un
+  contacto importado con permiso de avisos recibe su recordatorio por WhatsApp en su teléfono y queda con su identidad
+  de WhatsApp «sin confirmar»; si su teléfono no tiene WhatsApp, le llega por correo; y la respuesta a un recordatorio
+  del correo del sistema llega a la conversación de su contacto. Comprobado el 2026-10-16: tipos y lint sin errores
+  nuevos, Vitest en verde salvo la que ya fallaba y Playwright con una nueva, `e2e/demo/contacts-import.spec.ts`
+  (plantilla, revisar, confirmar los permisos, importar e importarlo otra vez sin crear nada). En Vitest, con Meta y el
+  correo simulados: importar y después el recordatorio sale a su teléfono con su prefijo una sola vez; el «entregado»
+  deja su WhatsApp «sin confirmar», y un «fallido», llegue antes o después, no deja nada y el recordatorio sigue por
+  correo; si otro contacto tiene un WhatsApp con ese teléfono no se le escribe por WhatsApp; mientras esté «sin
+  confirmar», la IA solo atiende la cita del recordatorio; la respuesta a un recordatorio del correo del sistema llega
+  a su contacto, con su dirección «sin confirmar» si el remitente está verificado. Migración 0006: solo añade columnas
+  y un índice. La revisión vio un fallo grave, ya corregido: al primer WhatsApp de un contacto importado se le ponía el
+  prefijo dos veces. También se corrigió lo demás que vio: un «fallido» que llega antes o después del «entregado»; en
+  una respuesta por correo, la IA ya puede atender la cita de ese recordatorio; con el contacto «sin confirmar» la IA
+  tampoco crea citas nuevas ni anota permisos (sí da de baja, como pide [HER-16]); los emails se validan como en el
+  resto de la app; los números de 11 cifras ya llevan su prefijo (Excel quita el «+»); la fila de un CSV con líneas
+  en blanco; la demo ya puede enseñar un contacto «sin confirmar»; fusionar y borrar contactos tienen en cuenta el
+  registro del correo del sistema; los permisos importados se guardan de una vez; y la pantalla sigue `DESIGN.md`.
+  Se precisaron [CTO-11] (una fecha que no se entiende o futura es un error; 11 cifras ya llevan prefijo) y [WA-63]
+  (sin crear citas nuevas). No hay prueba de Playwright que recorra el recordatorio a un contacto importado ni la
+  respuesta por correo: dependen de la hora y de un buzón, y están en Vitest.
+- [x] Fase 14 · Envíos programados: [ENV-01]–[ENV-14] (de [ENV-01], salvo los automáticos y los repetidos), [AJU-06],
+  [AJU-18] (salvo las horas de los automáticos y los repetidos), [AJU-08] («envío parado»), [CUM-05] (los
+  resultados de los envíos), [CUM-14] (la pantalla de envíos), [CUM-15], [CTO-05]–[CTO-07] (lo de los envíos),
+  [TG-12] (los envíos), [MOT-15], [PER-09], [ARR-22], de [ARR-23] la guía de envíos, la parte de los envíos de [ARR-25]
+  y las filas de «Quién puede hacer qué» de Envíos (salvo lo de los automáticos y los repetidos) y de Ajustes (Envíos).
+  Se comprueba, con Meta, Telegram y el correo
+  simulados: un envío a contactos marcados salta a los que están de baja o no tienen permiso y lo explica; sale a su
+  hora, a su ritmo y dentro de las horas de envío; si no cabe en el límite de Meta, sigue cuando las 24 horas
+  anteriores dejan sitio, sin quitárselo a los recordatorios; se para solo si Meta pausa la plantilla; el enlace de
+  baja del correo funciona sin iniciar sesión; en local, el correo no se ofrece. Comprobado el 2026-10-17, junto con
+  las fases 15 y 16: tipos y lint sin errores (su único aviso, en `render-app-icon.tsx`, es de antes), 5.243 pruebas de
+  Vitest y 195 de Playwright en verde, con la compilación. En Playwright, `e2e/demo/campaigns.spec.ts`: la demo enseña
+  un envío hecho con sus resultados y otro programado; un envío a contactos marcados dice a quién llega y por qué no,
+  sale por el WhatsApp de la demo y dice cómo fue; Supervisor y Solo lectura lo ven sin programarlo y el Agente no lo
+  ve; «Darme de baja» funciona sin iniciar sesión y solo con un enlace de la app. En Vitest, con la hora fijada y Meta,
+  Telegram y el correo simulados: el ritmo por minuto y las horas de envío, el límite de 24 h de Meta sin quitar sitio a
+  los recordatorios, cada parada de [ENV-09] (plantilla pausada a mitad de ronda, cuenta restringida, canal que se cae
+  justo al enviar, demasiados fallos y reanudar), el siguiente canal cuando Meta avisa tarde de un fallo y los resultados
+  de los envíos en la limpieza y al fusionar o borrar contactos. Migraciones 0007 y 0008: solo añaden. Las dos
+  revisiones vieron fallos, ya corregidos: al fusionar contactos se perdía el enlace de baja de uno; la reserva para los
+  recordatorios apartaba de más; un envío parado por fallos no se podía reanudar; una plantilla pausada a mitad de ronda
+  dejaba contactos como «Error inesperado»; un contacto podía quedarse «pendiente» para siempre en un envío cancelado;
+  «Ahora» y «Reanudar» podían saltarse el ritmo por minuto; un canal apagado justo al enviar mandaba el contacto por el
+  siguiente canal; y se podía cancelar un envío ya terminado. Se precisaron [ENV-09] (dos fallos más que son del
+  destinatario) y [ENV-10] (uno terminado ya no se cancela). Ninguna prueba de Playwright espera a la hora de un envío
+  programado: eso está en Vitest.
+- [x] Fase 15 · Envíos automáticos y repetidos: [ENV-15], [ENV-16], la parte de [ENV-01], de [AJU-18] y de [ARR-25] que
+  les toca, y lo de los automáticos y los repetidos en las filas de Envíos de «Quién puede hacer qué». Se comprueba,
+  con la hora fijada: el mensaje de después de la cita sale una vez a quien no tiene otra cita y no a quien ya la
+  tiene; un envío mensual sale cada mes a quien tiene la etiqueta en ese momento, y las veces perdidas con la app
+  parada no salen de golpe. Comprobado el 2026-10-17 (las cifras, en la fase 14): en Playwright,
+  `e2e/demo/campaign-rules.spec.ts` (el de después de la cita de la demo, activo y con su próxima vez; uno mensual creado
+  para una etiqueta, pausado, activado otra vez y borrado; Supervisor los ve sin crearlos y el Agente no puede
+  abrirlos). En Vitest, con la hora fijada, también el cambio de hora del 25 de octubre: el de después de la cita sale
+  una vez por cita y no a quien ya tiene otra; el mensual sale cada mes a quien tiene la etiqueta en ese momento, el
+  día 31 sale el último día de los meses cortos y las veces perdidas no salen de golpe; si la anterior no ha terminado,
+  la siguiente espera; y quién puede hacer qué. Migración 0009: solo añade. La revisión vio fallos, ya corregidos: tras
+  días con la app parada se perdía también la vez de hoy; borrar uno con su envío del día a medias se saltaba «Ya tiene
+  otra cita»; borrar el canal por el que filtra un repetido lo abría a todos (ahora no se deja borrar ese canal); y el
+  tope de 20.000 contactos de un repetido queda en el registro de actividad.
+
+- [ ] Fase 16 · Instagram y el canal de cada conversación en la bandeja (encargo del propietario del 2026-10-16, en una
+  sola fase): [IG-01]–[IG-13], [BAN-17], [BAN-18] y lo de Instagram de [CAN-02], [CAN-07] y [CAN-12]. Se comprueba, con
+  Instagram simulado: se conecta con el token y la clave, recibe texto, nota de voz, imagen y PDF y responde una sola
+  vez; fuera de la ventana de 24 h no responde ni deja enviar; un aviso sin firma válida se rechaza sin guardar nada; lo
+  que se responde desde Instagram entra en la conversación y pausa la IA; el token se renueva solo; la misma cuenta no
+  se conecta dos veces; y en la bandeja se ve el canal de cada conversación. Pasan lint, tipos, pruebas y compilación.
+  Para cerrarla falta, y es del propietario: probarlo con su cuenta de Instagram real (decisión 0029, «Lo que hay que
+  comprobar con una cuenta real»). Construida y comprobada el 2026-10-17 con Instagram simulado (las cifras, en la fase
+  14): en Playwright, `e2e/demo/instagram.spec.ts` (el asistente conecta una cuenta, Meta comprueba la dirección, llega
+  un mensaje directo, el agente responde una vez, una persona responde desde la bandeja, lo escrito en Instagram entra
+  «Desde Instagram», un aviso sin firma se rechaza y «Desconectar» borra el token; un token rechazado no guarda nada; la
+  demo trae su cuenta de Instagram) y `e2e/demo/inbox-channels.spec.ts` (cada conversación de la demo dice su canal, y
+  el filtro «Canal» los nombra igual). En Vitest, lo demás de [IG-01]–[IG-13]: notas de voz, imágenes y PDF, la ventana
+  de 24 h (también para la IA y para «Reintentar»), los 1.000 bytes, los borrados, la renovación del token, el panel y
+  sus semáforos, la misma cuenta dos veces y varias cuentas de una app de Meta. Las revisiones vieron fallos, ya
+  corregidos: la IA podía contestar después de que el negocio respondiera desde Instagram; un borrador aprobado o un
+  «Reintentar» podían confundirse con un mensaje escrito en Instagram, pausar la IA y quedarse en cola; un mensaje
+  borrado se quedaba en el aviso en bruto de otra cuenta y el resumen no se rehacía; lo que llegaba para una cuenta
+  desactivada de la misma app se perdía; un fallo pasajero al renovar el token daba una falsa alarma; y «Reintentar»
+  no miraba la ventana de 24 h. Se precisaron [IG-02], [IG-09] y [BAN-13].
+
+Servidor propio con Dokploy y Supabase (encargo del propietario del 2026-10-17, sin fase): preparado el `Dockerfile`, el
+`docker-compose.yml` (`migrate`, `web` y `worker`), el flujo de GitHub que construye la imagen, la prueba con Postgres y
+pgvector y la publica en `ghcr.io`, y la guía paso a paso (`docs/guia-despliegue.md`). Comprobado en una copia limpia:
+instalar y compilar como la imagen, migrar dos veces, la app respondiendo `/api/health` y el worker arrancando y
+parando bien. El 2026-10-17, con el conector de Supabase, el proyecto «agentes whatsapp pro» (Irlanda, plan gratuito,
+pgvector 0.8.2) quedó con las migraciones aplicadas por el usuario `dominia_app` y la demo cargada; la app de una
+copia limpia entró en ella y sirvió sus archivos. Sus usuarios de prueba conservan las contraseñas del README, por
+decisión del propietario: es su instalación de pruebas. Publicada en su servidor de Hostinger con Dokploy, en
+`https://appgestion.blunexai.com` (comprobado el 2026-10-19: `/api/health` en «ok», certificado de Let's Encrypt y el
+`worker` haciendo sus rondas). Desde el 2026-10-19, cada subida a `main` se despliega sola cuando la imagen está
+construida y probada: el último paso del flujo llama a la API de Dokploy con los secretos `DOKPLOY_*` de GitHub
+(«Desplegar solo» en `docs/guia-despliegue.md`).
+
+Después: publicación en Vercel (con Supabase) con la prueba del número de prueba de Meta; GitHub (versión,
+migraciones solo aditivas, changelog y aviso de versión nueva); respuestas con voz; Google Calendar e iCal;
+evaluación; agente de fuera de horario; y servicios con dos recursos.
+
+## Cómo se comprueba que todo funciona
+
+- Cada regla de «Qué hace» y cada fila de «Quién puede hacer qué» tiene su prueba, que cita su código, y pasan
+  `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:e2e` y `pnpm build`. Las pruebas nunca llaman a servicios
+  reales: Meta, OpenRouter, Google, Microsoft, Mistral, Telegram y los servidores de correo están simulados.
+- Clon limpio en otra carpeta: `pnpm install && pnpm dev` arranca con la demo; se entra con cada usuario del README
+  y cada uno ve y puede hacer solo lo de su rol.
+- Demo sin clave: se ve el aviso de la clave; un mensaje del simulador llega a la bandeja y espera a una persona;
+  la búsqueda de conocimiento responde por texto; agenda, contactos e informes funcionan.
+- Demo con una clave real (a mano y con gasto mínimo): una nota de voz por el simulador de WhatsApp se transcribe y
+  el agente activo responde con el aviso de IA; en `/widget-demo` el agente responde una pregunta del negocio
+  citando la fuente y reserva una cita que aparece en la agenda; al pedir una persona hay traspaso con aviso, y al
+  contestar una persona la IA se pausa; al cambiar el agente activo responde el nuevo; un correo de demo crea un
+  borrador que, aprobado, sale en el mismo hilo.
+- Cumplimiento: «BAJA» da de baja; se exportan y se borran los datos de un contacto; las páginas legales se ven sin
+  iniciar sesión; la limpieza diaria borra lo caducado; sin el permiso que corresponde no sale ninguna plantilla,
+  recordatorio por WhatsApp o Telegram ni envío; el enlace de baja de un correo de un envío funciona sin iniciar sesión.
+- Recordatorios y envíos, con Meta, YCloud, Telegram y el correo simulados y la hora fijada: los recordatorios salen
+  a su hora por el primer canal posible y sus botones funcionan; un envío respeta permisos, bajas, horas, ritmo y el
+  límite de Meta, y se para solo cuando Meta pausa su plantilla.
+- Seguridad: repaso de `docs/security.md`, `pnpm audit` sin fallos graves y revisión de `docs/review.md`; ninguna
+  respuesta al navegador contiene un secreto; un aviso con firma falsa y el cron sin secreto se rechazan.
+- Negocio real: con `pnpm db:fresh`, el asistente deja un negocio funcionando con su chat web; conectar WhatsApp y
+  correo reales se comprueba cuando la app se publique, siguiendo las guías.
+- PWA: en local se instala y recibe avisos en el navegador del ordenador; en el móvil, cuando la app se publique
+  con HTTPS.

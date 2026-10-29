@@ -1,0 +1,371 @@
+// The inbound pipeline of every channel ([CAN-09]–[CAN-13]), in the spec's order. The route has already checked the
+// signature (step 1); here: raw webhook saved (only when it comes from a webhook), normalized events, contact and
+// identity, message stored once, conversation found or created, screens told, and the reply scheduled with grouping.
+// It returns at once and NEVER calls the AI ([CAN-10]): the reply runs later, in the job queue.
+import "server-only";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { after } from "next/server";
+import { db, type Executor } from "@/db";
+import { channels, contacts, conversations, messages, webhookEvents, type MessageReaction } from "@/db/schema";
+import { toSingleLine } from "@/lib/format";
+import type { JobQueue } from "@/server/adapters/job-queue";
+import type { AccountEvent, ChannelRecord, InboundMessageEvent, NormalizedEvent } from "@/server/channels/types";
+import { enqueueOptOutConfirmation, recordKeywordOptOut, type KeywordOptOut } from "@/server/compliance/opt-out";
+import { enqueueReminderThanks, recordReminderTap, whatsappReminderTap, type ReminderAction, type ReminderTapOutcome } from "@/server/booking/reminder-buttons";
+import { quotedMessage, recordMarketingOptOutTap, recordTelegramMarketingOptOut, tappedButton, type QuotedMessage, type TappedButton } from "./button-taps";
+import { pendingInbound } from "@/server/engine/pending";
+import { scheduleReply } from "@/server/engine/schedule";
+import { MIN_JOB_BUDGET_MS, tick } from "@/server/jobs/tick";
+import { notify, resolveRecipients } from "@/server/notifications/notify";
+import { publishConversationEvent } from "@/server/realtime/events";
+import { safeErrorMessage } from "@/server/redact";
+import { storableJson } from "@/server/storable-text";
+import { upsertContactForSender } from "./contacts";
+import { messageSearchText } from "./message-search";
+import { applyStatusUpdate, type AppliedStatus } from "./status";
+
+export type RawWebhook = { source: string; payload: unknown; receivedAt?: Date };
+
+export type IngestOptions = {
+  /** The raw body when the events come from a webhook: stored first in webhook_events ([CAN-09]). */
+  raw?: RawWebhook;
+  now?: Date;
+  queue?: JobQueue;
+  random?: () => number;
+};
+
+export type IngestedMessage = {
+  messageId: string | null;
+  conversationId: string | null;
+  contactId: string | null;
+  /** Already stored before (same channel and id): nothing changed and no second reply ([CAN-11]). */
+  duplicate: boolean;
+  /** A reaction stored on another message ([WA-37]). */
+  reaction: boolean;
+};
+
+export type IngestResult = {
+  webhookEventId: string | null;
+  messages: IngestedMessage[];
+  statuses: AppliedStatus[];
+  /** Left to the channel's own code (quality, templates, account changes). */
+  accountEvents: AccountEvent[];
+  /**
+   * When the earliest scheduled reply (or the confirmation of an opt-out, [CUM-03]) runs, for kickTick(); null when
+   * nothing was scheduled.
+   */
+  replyRunAt: Date | null;
+};
+
+const EMAIL_THREADED = (type: ChannelRecord["type"]) => type.startsWith("email_");
+/** Conversations of a channel + contact (or thread) looked at: one real and one simulated at most, in practice. */
+const CONVERSATION_CANDIDATES = 10;
+
+async function findOrCreateConversation(tx: Executor, channel: ChannelRecord, contactId: string, event: InboundMessageEvent, now: Date) {
+  const threadId = EMAIL_THREADED(channel.type) ? event.threadId?.trim() || event.externalId : null;
+  // One per channel + contact in WhatsApp, web chat and Telegram; one per thread in email ([CAN-12]).
+  const where = threadId
+    ? and(eq(conversations.channelId, channel.id), eq(conversations.externalThreadId, threadId))
+    : and(eq(conversations.channelId, channel.id), eq(conversations.contactId, contactId), eq(conversations.isTest, false));
+  const candidates = await tx.select().from(conversations).where(where).orderBy(desc(conversations.createdAt)).limit(CONVERSATION_CANDIDATES);
+  // A simulated message never lands in a real customer's conversation, nor a real one in a simulated conversation ([AJU-13]).
+  const existing = candidates.find((row) => (row.metadata.simulated === true) === (event.simulated === true));
+  if (existing) return { conversation: existing, created: false };
+  const [created] = await tx
+    .insert(conversations)
+    .values({
+      channelId: channel.id,
+      contactId,
+      externalThreadId: threadId,
+      status: "open",
+      aiMode: "ai",
+      metadata: event.simulated ? { simulated: true } : {},
+      createdAt: now,
+      updatedAt: now,
+    })
+    .returning();
+  return { conversation: created, created: true };
+}
+
+/** A reaction goes on the message it reacts to; without emoji the customer removed it ([WA-37]). */
+async function applyReaction(tx: Executor, channel: ChannelRecord, event: InboundMessageEvent, now: Date): Promise<IngestedMessage> {
+  const reaction = event.reaction;
+  const none: IngestedMessage = { messageId: null, conversationId: null, contactId: null, duplicate: false, reaction: true };
+  if (!reaction) return none;
+  const [target] = await tx
+    .select({ id: messages.id, conversationId: messages.conversationId, reactions: messages.reactions })
+    .from(messages)
+    .where(and(eq(messages.channelId, channel.id), eq(messages.externalId, reaction.targetExternalId)));
+  if (!target) return none;
+  const others = target.reactions.filter((item) => item.from !== "contact");
+  const next: MessageReaction[] = reaction.emoji ? [...others, { from: "contact", emoji: reaction.emoji, at: event.sentAt.toISOString() }] : others;
+  await tx.update(messages).set({ reactions: next, updatedAt: now }).where(eq(messages.id, target.id));
+  await publishConversationEvent(
+    { type: "conversation.updated", conversationId: target.conversationId, channelId: channel.id, change: "reaction" },
+    { channelType: channel.type, executor: tx },
+  );
+  return { ...none, messageId: target.id, conversationId: target.conversationId };
+}
+
+type InboundOutcome = IngestedMessage & {
+  schedule: { lastInboundMessageId: string; firstPendingAt: Date } | null;
+  optOut: KeywordOptOut | null;
+  /** «Confirmo» on a reminder: its «¡Gracias!» goes through the queue ([AGD-32]). */
+  thanks?: ReminderTapOutcome["thanks"];
+  /** A customer's message opened a conversation (new, or a resolved one again): the team may want to hear ([AJU-08]). */
+  opened: boolean;
+};
+
+async function ingestInbound(channel: ChannelRecord, event: InboundMessageEvent, now: Date): Promise<InboundOutcome> {
+  return db.transaction(async (tx): Promise<InboundOutcome> => {
+    if (event.reaction) return { ...(await applyReaction(tx, channel, event, now)), schedule: null, optOut: null, opened: false };
+
+    const [duplicate] = await tx
+      .select({ id: messages.id, conversationId: messages.conversationId })
+      .from(messages)
+      .where(and(eq(messages.channelId, channel.id), eq(messages.externalId, event.externalId)));
+    if (duplicate) {
+      return { messageId: duplicate.id, conversationId: duplicate.conversationId, contactId: null, duplicate: true, reaction: false, schedule: null, optOut: null, opened: false };
+    }
+
+    const { contactId } = await upsertContactForSender(tx, channel.type, event.sender, now);
+    const { conversation, created } = await findOrCreateConversation(tx, channel, contactId, event, now);
+    // What must not be answered (a channel's notice, a type it cannot show) is the system's, never the customer's words:
+    // the Bandeja shows it as a system message and the AI never reads it as a turn ([WA-36], [WA-50], [BAN-05]).
+    const senderType = event.noReply ? "system" : "contact";
+    const [message] = await tx
+      .insert(messages)
+      .values({
+        conversationId: conversation.id,
+        channelId: channel.id,
+        direction: "inbound",
+        senderType,
+        externalId: event.externalId,
+        contentType: event.contentType,
+        text: event.text ?? null,
+        searchText: messageSearchText(event.text),
+        media: event.media ?? null,
+        status: "received",
+        simulated: event.simulated === true,
+        metadata: event.metadata ?? {},
+        sentAt: event.sentAt,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoNothing({ target: [messages.channelId, messages.externalId] })
+      .returning({ id: messages.id });
+    if (!message) return { messageId: null, conversationId: conversation.id, contactId, duplicate: true, reaction: false, schedule: null, optOut: null, opened: false };
+
+    const reopened = conversation.status === "resolved";
+    const lastInboundAt = conversation.lastInboundAt && conversation.lastInboundAt > event.sentAt ? conversation.lastInboundAt : event.sentAt;
+    await tx
+      .update(conversations)
+      .set({
+        // Added in the database: a «read» set by a person outside this transaction is never overwritten.
+        unreadCount: sql`${conversations.unreadCount} + 1`,
+        // What must not be answered (system notices, unsupported types) never opens nor renews WhatsApp's 24 h window
+        // ([WA-43], docs/integracion-whatsapp-mensajes.md §13); a customer's own post shared on Instagram does ([IG-04]).
+        ...(event.noReply && !event.opensWindow ? {} : { lastInboundAt }),
+        lastMessageAt: now,
+        // A resolved conversation reopens and goes back to the AI for this message ([CAN-12], [TRA-08]).
+        ...(reopened ? { status: "open" as const, aiMode: "ai" as const, aiPausedUntil: null, pauseReason: null } : {}),
+        updatedAt: now,
+      })
+      .where(eq(conversations.id, conversation.id));
+    await tx.update(channels).set({ lastInboundAt: now, updatedAt: now }).where(eq(channels.id, channel.id));
+
+    await publishConversationEvent(
+      { type: "message.created", conversationId: conversation.id, channelId: channel.id, messageId: message.id, direction: "inbound", senderType },
+      { channelType: channel.type, executor: tx },
+    );
+    await publishConversationEvent(
+      { type: "conversation.updated", conversationId: conversation.id, channelId: channel.id, change: created ? "created" : "inbound" },
+      { channelType: channel.type, executor: tx },
+    );
+
+    // A button of one of our templates: «No quiero publicidad» opts them out of novedades y publicidad by WhatsApp, with
+    // one confirmation and no AI reply ([WA-62]).
+    const button = event.noReply ? null : tappedButton(event);
+    const quotedId = typeof event.metadata?.quotedExternalId === "string" ? event.metadata.quotedExternalId : null;
+    const quoted = button && quotedId ? await quotedMessage(tx, channel.id, quotedId) : null;
+    const telegramOptOut = event.metadata?.marketingOptOutButton as { recipientId?: unknown } | undefined;
+    const marketingTap =
+      typeof telegramOptOut?.recipientId === "string"
+        ? await recordTelegramMarketingOptOut(tx, { channel, contactId, conversationId: conversation.id, recipientId: telegramOptOut.recipientId, now })
+        : button && quoted
+          ? await recordMarketingOptOutTap(tx, { channel, contactId, conversationId: conversation.id, quoted, button, now })
+          : null;
+    // A reminder's «Confirmo» or «Necesito cambiarla» (WhatsApp, by the template it answers; Telegram, by its code).
+    const reminderButton = marketingTap?.handled ? null : await reminderButtonOf(tx, event, button, quoted);
+    const reminderTap = reminderButton
+      ? await recordReminderTap(tx, { contactId, conversationId: conversation.id, messageId: message.id, ...reminderButton, now })
+      : null;
+    const tap = marketingTap?.handled ? marketingTap : reminderTap?.handled ? { handled: true, optOut: null } : null;
+    // «BAJA» or «STOP» opts the sender of this message out of this channel (in an email thread, whoever wrote it, not the
+    // thread's first contact); its one confirmation goes through the queue instead of an AI reply ([CUM-03]).
+    const subject = typeof event.metadata?.subject === "string" ? event.metadata.subject : null;
+    const optOut =
+      tap?.optOut ??
+      (event.noReply || tap?.handled
+        ? null
+        : await recordKeywordOptOut(tx, { channel, contactId, conversationId: conversation.id, contentType: event.contentType, text: event.text, subject, now }));
+    let schedule: InboundOutcome["schedule"] = null;
+    if (!event.noReply && !optOut && !tap?.handled) {
+      const [first] = await pendingInbound(conversation.id, tx);
+      schedule = { lastInboundMessageId: message.id, firstPendingAt: first?.createdAt ?? now };
+    }
+    const opened = !event.noReply && (created || reopened);
+    return { messageId: message.id, conversationId: conversation.id, contactId, duplicate: false, reaction: false, schedule, optOut, opened, thanks: reminderTap?.thanks ?? null };
+  });
+}
+
+/** The reminder button a message taps, if it is one: WhatsApp's by the template it answers, Telegram's by its code. */
+async function reminderButtonOf(
+  tx: Executor,
+  event: InboundMessageEvent,
+  button: TappedButton | null,
+  quoted: QuotedMessage | null,
+): Promise<{ sendId: string; action: ReminderAction } | null> {
+  const telegram = event.metadata?.reminderButton;
+  if (typeof telegram === "object" && telegram !== null) {
+    const { sendId, action } = telegram as { sendId?: unknown; action?: unknown };
+    if (typeof sendId === "string" && /^[0-9a-f-]{36}$/.test(sendId) && (action === "confirm" || action === "change")) return { sendId, action };
+    return null;
+  }
+  return button && quoted ? whatsappReminderTap(tx, quoted, button) : null;
+}
+
+/** The contact's name as a notice shows it, also on a locked phone ([PWA-04]): one line and short. */
+const MAX_NOTICE_NAME = 40;
+
+/**
+ * «Conversación nueva: Ana» for whoever chose to hear about it in Ajustes › Notificaciones (off by default), only people
+ * who see the channel ([AJU-08], [PWA-08]); what happened and with whom, never what the customer wrote ([PWA-04]). A
+ * failure here never stops the message from coming in.
+ */
+async function notifyNewConversation(channel: ChannelRecord, conversationId: string, contactId: string, queue?: JobQueue): Promise<void> {
+  try {
+    // Off by default: then this costs one read of the settings, and a webhook still answers at once ([CAN-09]).
+    const recipients = await resolveRecipients({ event: "new_conversation", channelId: channel.id });
+    if (recipients.length === 0) return;
+    const [contact] = await db.select({ name: contacts.name }).from(contacts).where(eq(contacts.id, contactId));
+    const who = toSingleLine(contact?.name ?? "", MAX_NOTICE_NAME) || "Cliente sin nombre";
+    await notify({
+      event: "new_conversation",
+      title: `Conversación nueva: ${who}`,
+      link: `/bandeja/${conversationId}`,
+      channelId: channel.id,
+      userIds: recipients.map((member) => member.userId),
+      queue,
+    });
+  } catch (error) {
+    console.warn(`[entrada] No se ha podido avisar de una conversación nueva: ${safeErrorMessage(error)}`);
+  }
+}
+
+async function saveRawWebhook(channel: ChannelRecord, raw: RawWebhook, now: Date): Promise<string> {
+  const [row] = await db
+    .insert(webhookEvents)
+    .values({ source: raw.source, channelId: channel.id, signatureValid: true, payload: storableJson(raw.payload), receivedAt: raw.receivedAt ?? now, createdAt: now, updatedAt: now })
+    .returning({ id: webhookEvents.id });
+  return row.id;
+}
+
+/**
+ * Runs the pipeline for the events of one channel. With `raw` (a webhook), each event's failure is recorded on the
+ * raw row and the rest go on, so the route can still answer 200; without it (widget, simulator) errors are thrown.
+ * What came from outside is made storable first (src/server/storable-text.ts): a NUL character in a message never
+ * makes it fail.
+ */
+export async function ingestEvents(channel: ChannelRecord, events: readonly NormalizedEvent[], options: IngestOptions = {}): Promise<IngestResult> {
+  const now = options.now ?? new Date();
+  const webhookEventId = options.raw ? await saveRawWebhook(channel, options.raw, now) : null;
+  const result: IngestResult = { webhookEventId, messages: [], statuses: [], accountEvents: [], replyRunAt: null };
+  const errors: string[] = [];
+
+  for (const received of events) {
+    try {
+      const event = storableJson(received);
+      if (event.kind === "inbound_message") {
+        const { schedule, optOut, opened, thanks, ...ingested } = await ingestInbound(channel, event, now);
+        if (thanks) {
+          const job = await enqueueReminderThanks(thanks, { now, queue: options.queue });
+          if (!result.replyRunAt || job.runAt < result.replyRunAt) result.replyRunAt = job.runAt;
+        }
+        result.messages.push(ingested);
+        if (opened && ingested.conversationId && ingested.contactId) await notifyNewConversation(channel, ingested.conversationId, ingested.contactId, options.queue);
+        if (schedule && ingested.conversationId) {
+          const job = await scheduleReply({ conversationId: ingested.conversationId, ...schedule, now, queue: options.queue, random: options.random });
+          if (!result.replyRunAt || job.runAt < result.replyRunAt) result.replyRunAt = job.runAt;
+        }
+        if (optOut) {
+          const job = await enqueueOptOutConfirmation(optOut, { now, queue: options.queue });
+          if (!result.replyRunAt || job.runAt < result.replyRunAt) result.replyRunAt = job.runAt;
+        }
+      } else if (event.kind === "status_update") {
+        const applied = await applyStatusUpdate(channel, event);
+        if (applied) result.statuses.push(applied);
+      } else {
+        result.accountEvents.push(event);
+      }
+    } catch (error) {
+      if (!webhookEventId) throw error;
+      errors.push(safeErrorMessage(error));
+    }
+  }
+
+  if (webhookEventId) {
+    await db
+      .update(webhookEvents)
+      .set({ processedAt: new Date(), error: errors.length > 0 ? errors.join(" · ").slice(0, 1_000) : null, updatedAt: new Date() })
+      .where(and(eq(webhookEvents.id, webhookEventId), isNull(webhookEvents.processedAt)));
+  }
+  return result;
+}
+
+// ─── Running the work after answering ───────────────────────────────────────────────────────────────────
+
+/** Left for the response, the tick's wrap-up and platform overhead. */
+export const KICK_SAFETY_MARGIN_MS = 10_000;
+/** The wait never eats the time the reply itself needs. */
+export const KICK_MIN_TICK_MS = 20_000;
+/** Wake up just after the job is due. */
+const KICK_LATE_MS = 250;
+
+export type KickOptions = {
+  /** maxDuration of the route that calls it, in seconds (the tick budget derives from it). */
+  maxDurationSec: number;
+  /** When the scheduled reply is due (IngestResult.replyRunAt): the tick waits for it, bounded. */
+  runAt?: Date | null;
+  /** after() from next/server by default; tests pass their own. */
+  schedule?: (task: () => Promise<void>) => void;
+  sleep?: (ms: number) => Promise<void>;
+  clock?: () => number;
+  runTick?: typeof tick;
+};
+
+const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * For route handlers and Server Actions, once the response is decided: after() waits until the reply job is due
+ * (bounded by the route's maxDuration) and runs tick() with the time left ([MOT-15]). If this wait is cut, or there is
+ * no request to wait after, the cron (or the local ticker) picks it up.
+ */
+export function kickTick(options: KickOptions): void {
+  const clock = options.clock ?? Date.now;
+  const started = clock();
+  const totalMs = options.maxDurationSec * 1_000 - KICK_SAFETY_MARGIN_MS;
+  const schedule = options.schedule ?? after;
+  try {
+    schedule(async () => {
+      const due = options.runAt ? options.runAt.getTime() - clock() + KICK_LATE_MS : 0;
+      const wait = Math.max(0, Math.min(due, totalMs - KICK_MIN_TICK_MS));
+      if (wait > 0) await (options.sleep ?? defaultSleep)(wait);
+      const budgetMs = totalMs - (clock() - started);
+      if (budgetMs < MIN_JOB_BUDGET_MS) return;
+      await (options.runTick ?? tick)({ budgetMs, workerId: `kick-${crypto.randomUUID()}` });
+    });
+  } catch {
+    // Outside a request (a script, a test) there is no «after the answer»: the cron or the local ticker picks it up.
+  }
+}

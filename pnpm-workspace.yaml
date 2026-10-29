@@ -1,0 +1,36 @@
+# Ajustes de seguridad de pnpm (docs/security.md, «Dependencias»).
+
+# No instala versiones publicadas hace menos de 7 días (en minutos).
+minimumReleaseAge: 10080
+# D1 (docs/security.md, «Excepciones aprobadas») quitada el 2026-10-09: excluía del margen el parche de Next.js 16.3.6.
+# Ya no hace falta ninguna exclusión: 16.3.8 (30-09-2026) y lo demás instalado tienen más de 7 días.
+
+# Rechaza versiones publicadas con menos garantías que las anteriores.
+trustPolicy: no-downgrade
+# D2: versiones antiguas indirectas sin procedencia (vía eslint-config-next y @babel/core del CLI de shadcn).
+trustPolicyExclude:
+  - eslint-import-resolver-typescript@3.10.1
+  - semver@6.3.1
+
+# Rechaza dependencias indirectas que vienen de git o de una URL.
+blockExoticSubdeps: true
+
+# Un script de instalación sin aprobar hace fallar la instalación.
+strictDepBuilds: true
+allowBuilds:
+  ffmpeg-static: true # D3: descarga el binario de FFmpeg (notas de voz)
+  esbuild: false # funciona sin su postinstall (binario en dependencias opcionales)
+  unrs-resolver: false # su binario llega por dependencias opcionales
+  fsevents: false # solo macOS, opcional
+  sharp: false # opcional; sin script en la versión usada
+  baileys: false # D6: su preinstall solo comprueba que Node sea 20 o más
+  protobufjs: false # D6: su postinstall solo imprime un aviso sobre rangos de versiones
+
+# D6 (docs/security.md, «Excepciones aprobadas»): pino 9.14.0, la que pide Baileys por defecto, se publicó a mano y sin
+# procedencia después de versiones que sí la traían, y `trustPolicy: no-downgrade` la rechaza. 9.11.0 es la última 9.x
+# que pasa. Solo para Baileys: el pino de imapflow no cambia.
+overrides:
+  'baileys>pino': 9.11.0
+
+# Versiones exactas en package.json (sin ^ ni ~).
+savePrefix: ''
