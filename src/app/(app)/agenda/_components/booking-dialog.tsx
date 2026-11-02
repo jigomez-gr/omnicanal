@@ -1,6 +1,6 @@
 "use client";
 
-import { LoaderCircle } from "lucide-react";
+import { LoaderCircle, MapPin, Phone, Video } from "lucide-react";
 import { useId, useState, useTransition, type FormEvent } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -74,6 +74,9 @@ function BookingForm({ state, setup, onDone }: FormProps) {
   // A time clicked on the grid is chosen as soon as it shows up among the free slots, until the person picks another.
   const [preferredMinutes, setPreferredMinutes] = useState<number | undefined>(state.mode === "create" ? state.prefill.minutes : undefined);
   const [status, setStatus] = useState<"confirmed" | "pending">(service?.requiresManualConfirmation ? "pending" : "confirmed");
+  const [modality, setModality] = useState<"in_person" | "phone" | "virtual">(
+    editing?.notes?.includes("https://app.cal.com/video/") ? "virtual" : "in_person",
+  );
   const [notes, setNotes] = useState(editing?.notes ?? "");
   const [customer, setCustomer] = useState<CustomerChoice>(() => initialCustomer(state));
   const [notify, setNotify] = useState(false);
@@ -127,13 +130,21 @@ function BookingForm({ state, setup, onDone }: FormProps) {
     if (!who) problems[customer.kind === "new" ? "name" : "contactId"] = [`Elige un ${words.customer} o escribe su nombre.`];
     setMissing(problems);
     if (!service || !chosen || !who) return;
+    const cleanSlotSlug = (chosen ?? "sala").replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+    const calVideoTag =
+      modality === "virtual" && !notes.includes("https://app.cal.com/video/")
+        ? `[Cita Virtual Cal.com: https://app.cal.com/video/soniquete-${cleanSlotSlug}]`
+        : modality === "phone" && !notes.includes("[Cita Telefónica]")
+          ? "[Cita Telefónica]"
+          : "";
+    const finalNotes = [calVideoTag, notes.trim()].filter(Boolean).join(" · ");
     const input = {
       serviceId: service.id,
       resourceId,
       start: chosen,
       ...(showPeople ? { people } : {}),
       status,
-      ...(notes.trim() ? { notes: notes.trim() } : {}),
+      ...(finalNotes ? { notes: finalNotes } : {}),
       ...who,
     };
     startTransition(async () => {
@@ -308,6 +319,44 @@ function BookingForm({ state, setup, onDone }: FormProps) {
         </div>
 
         {editing ? null : <StatusChoice id={`${id}-status`} value={status} onChange={setStatus} />}
+
+        <div className="grid gap-1.5">
+          <Label className="text-sm font-medium">Modalidad de la cita</Label>
+          <div className="grid grid-cols-3 gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={modality === "in_person" ? "default" : "outline"}
+              onClick={() => setModality("in_person")}
+            >
+              <MapPin aria-hidden className="size-3.5" />
+              Presencial
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={modality === "phone" ? "default" : "outline"}
+              onClick={() => setModality("phone")}
+            >
+              <Phone aria-hidden className="size-3.5" />
+              Telefónica
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={modality === "virtual" ? "default" : "outline"}
+              onClick={() => setModality("virtual")}
+            >
+              <Video aria-hidden className="size-3.5" />
+              Virtual (Cal.com)
+            </Button>
+          </div>
+          {modality === "virtual" ? (
+            <p className="text-xs text-muted-foreground">
+              Se generará automáticamente un enlace de videollamada de Cal.com en la ficha de la cita.
+            </p>
+          ) : null}
+        </div>
 
         <AgendaField id={`${id}-notes`} label="Notas" optional errors={errors.notes}>
           <Textarea

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, CalendarCheck, CalendarX, CircleCheckBig, History, LoaderCircle, Pencil, RotateCcw, UserX, X } from "lucide-react";
+import { ArrowUpRight, CalendarCheck, CalendarX, CircleCheckBig, History, LoaderCircle, Pencil, RotateCcw, UserX, Video, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useId, useState, useTransition, type ReactNode } from "react";
@@ -96,6 +96,8 @@ function BookingDetails({ booking }: { booking: PanelBooking }) {
   const notifyId = useId();
   const active = ACTIVE.includes(booking.status);
   const canNotify = booking.editable.canNotify;
+  const calcomUrlMatch = booking.notes?.match(/https:\/\/app\.cal\.com\/video\/[^\s\]]+/);
+  const calcomUrl = calcomUrlMatch ? calcomUrlMatch[0] : null;
 
   function changeStatus(status: BookingStatus, extra: Record<string, unknown> = {}) {
     startTransition(async () => {
@@ -112,6 +114,28 @@ function BookingDetails({ booking }: { booking: PanelBooking }) {
         {booking.customerConfirmed ? <CustomerConfirmedMark withText /> : null}
         {booking.isTest ? <TestChip /> : null}
       </div>
+
+      {calcomUrl ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-indigo-200 bg-indigo-50/70 p-3 dark:border-indigo-900 dark:bg-indigo-950/40">
+          <div className="flex items-center gap-2">
+            <Video aria-hidden className="size-5 shrink-0 text-indigo-600 dark:text-indigo-400" />
+            <div>
+              <span className="block text-xs font-semibold text-indigo-950 dark:text-indigo-200">
+                Reunión Virtual Cal.com
+              </span>
+              <span className="text-[11px] text-indigo-700 dark:text-indigo-300">
+                Enlace de videollamada activo
+              </span>
+            </div>
+          </div>
+          <Button asChild size="sm">
+            <a href={calcomUrl} target="_blank" rel="noopener noreferrer">
+              <Video aria-hidden className="size-3.5" />
+              Unirse a videollamada
+            </a>
+          </Button>
+        </div>
+      ) : null}
 
       <dl className="divide-y">
         <Row label="Servicio">{booking.serviceName}</Row>

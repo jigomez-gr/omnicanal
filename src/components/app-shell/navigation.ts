@@ -28,6 +28,7 @@ import {
   UserRound,
   Users,
   UsersRound,
+  Video,
   type LucideIcon,
 } from "lucide-react";
 import { PROFILE_PATH } from "@/lib/auth-paths";
@@ -325,7 +326,7 @@ export function hidesBottomNav(pathname: string): boolean {
   return /^\/bandeja\/[^/]+/.test(cleanPath(pathname));
 }
 
-export type AgencySectionKey = "promocion" | "llamadas" | "pagos";
+export type AgencySectionKey = "promocion" | "citas-online" | "llamadas" | "pagos";
 
 export type AgencyNavSection = {
   key: AgencySectionKey;
@@ -344,6 +345,14 @@ export const AGENCY_SECTIONS: readonly AgencyNavSection[] = [
     icon: Music,
     group: 0,
     anyOf: [PERMISSIONS.campaigns.view],
+  },
+  {
+    key: "citas-online",
+    label: "Citas Online (Cal.com)",
+    href: "/citas-online",
+    icon: Video,
+    group: 0,
+    anyOf: [PERMISSIONS.agenda.view, PERMISSIONS.campaigns.view],
   },
   {
     key: "llamadas",

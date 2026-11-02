@@ -1,6 +1,6 @@
 "use client";
 
-import { Ban, CalendarPlus, Ellipsis, FlaskConical, LoaderCircle, Settings2, Trash2 } from "lucide-react";
+import { Ban, CalendarPlus, Ellipsis, FlaskConical, LoaderCircle, Settings2, Trash2, Video } from "lucide-react";
 import Link from "next/link";
 import { useId, useState, useTransition, type FormEvent } from "react";
 import { toast } from "sonner";
@@ -48,6 +48,12 @@ export function HeaderActions({ date, testBookings }: HeaderActionsProps) {
           {words.newBooking}
         </Button>
       ) : null}
+      <Button asChild variant="outline">
+        <Link href="/citas-online">
+          <Video aria-hidden />
+          Citas Online (Cal.com)
+        </Link>
+      </Button>
       {abilities.block ? <BlockSlotDialog date={date} open={blockOpen} onOpenChange={setBlockOpen} /> : null}
       {hasTests ? <TestBookingsDialog {...testBookings} open={testsOpen} onOpenChange={setTestsOpen} /> : null}
       {hasSettings || hasTests ? (
