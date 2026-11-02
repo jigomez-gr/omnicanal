@@ -1,6 +1,8 @@
 "use client"
 
 import {
+  AlertTriangle,
+  BellRing,
   Building2,
   CalendarCheck2,
   CheckCircle2,
@@ -13,10 +15,12 @@ import {
   Layers,
   Megaphone,
   Music,
+  PlayCircle,
   Plus,
   Send,
   Sparkles,
   UserCheck,
+  Users,
   Video,
 } from "lucide-react"
 import Link from "next/link"
@@ -32,21 +36,29 @@ import {
   CONCERT_STATUS_LABELS,
   CONTRACT_STATUS_LABELS,
   CONTRACT_TYPE_LABELS,
+  EVENT_KIND_LABELS,
   FLAMENCO_MEDIA_PIECES,
   MEDIA_COMBINATION_GUIDE,
+  MEDIA_SOURCE_PLATFORM_LABELS,
   VENUE_KIND_LABELS,
   type ArtistDiscipline,
+  type EventKind,
+  type MediaSourcePlatform,
   type VenueKind,
 } from "@/lib/flamenco/catalog"
 import {
+  confirmProvisionalBookingAction,
   createArtistAction,
   createArtistDigitalServiceAction,
   createConcertAction,
   createContractAction,
   createMediaAssetAction,
+  createProvisionalBookingAction,
   createRepresentativeAction,
   createVenueAction,
+  evaluateMinAttendeesAction,
   generateFullMediaPackServerAction,
+  notifyProvisionalBookingsAction,
   scrapeWebEntityAction,
   simulateConcertOfferAction,
 } from "../actions"
@@ -77,6 +89,9 @@ export function PromocionClient({
     snapshot.artists[0]?.id ?? "",
   )
   const [selectedConcertIdForMedia, setSelectedConcertIdForMedia] = useState<string>("")
+  const [expandedArtistIdForVideos, setExpandedArtistIdForVideos] = useState<string | null>(
+    snapshot.artists[0]?.id ?? null,
+  )
 
   // Estados formulario nuevo intérprete
   const [artisticName, setArtisticName] = useState("")
@@ -96,9 +111,13 @@ export function PromocionClient({
   const [artistWeb, setArtistWeb] = useState("")
   const [artistBio, setArtistBio] = useState("")
 
-  // Estados formulario nueva pieza multimedia personalizada
+  // Estados formulario nueva pieza multimedia (estándar o abierta / YouTube)
   const [pieceCode, setPieceCode] = useState<string>(FLAMENCO_MEDIA_PIECES[0].code)
+  const [customPieceLabel, setCustomPieceLabel] = useState("")
+  const [sourcePlatform, setSourcePlatform] = useState<MediaSourcePlatform>("plataforma")
+  const [customTitle, setCustomTitle] = useState("")
   const [pieceUrl, setPieceUrl] = useState("")
+  const [customUse, setCustomUse] = useState("")
 
   // Estados formulario nueva sala
   const [venueName, setVenueName] = useState("")
@@ -111,13 +130,27 @@ export function PromocionClient({
   const [venuePhone, setVenuePhone] = useState("")
   const [venueWeb, setVenueWeb] = useState("")
 
-  // Estados formulario concierto y contrato
+  // Estados formulario Concierto / Evento (viaje, conferencia, entrevista, etc.)
   const [concertTitle, setConcertTitle] = useState("")
+  const [eventKind, setEventKind] = useState<EventKind>("concierto")
   const [concertArtistId, setConcertArtistId] = useState(snapshot.artists[0]?.id ?? "")
   const [concertVenueId, setConcertVenueId] = useState(snapshot.venues[0]?.id ?? "")
   const [concertDate, setConcertDate] = useState("2026-11-28T21:00")
+  const [dateAndPlaceTbd, setDateAndPlaceTbd] = useState(false)
+  const [provisionalBookingsOpen, setProvisionalBookingsOpen] = useState(true)
+  const [autoNotifyToConfirm, setAutoNotifyToConfirm] = useState(true)
+  const [cancelIfBelowMinAttendees, setCancelIfBelowMinAttendees] = useState(true)
+  const [minAttendees, setMinAttendees] = useState("30")
+  const [currentAttendees, setCurrentAttendees] = useState("12")
   const [concertCache, setConcertCache] = useState("2500")
   const [concertGuitarist, setConcertGuitarist] = useState("Diego del Morón")
+
+  // Estados formulario reserva provisional para un evento
+  const [provEventId, setProvEventId] = useState(snapshot.concerts[0]?.id ?? "")
+  const [provName, setProvName] = useState("")
+  const [provEmail, setProvEmail] = useState("")
+  const [provPhone, setProvPhone] = useState("")
+  const [provSeats, setProvSeats] = useState("2")
 
   const [contractCode, setContractCode] = useState(`CNT-${new Date().getFullYear()}-009`)
   const [contractArtistId, setContractArtistId] = useState(snapshot.artists[0]?.id ?? "")
@@ -172,10 +205,10 @@ export function PromocionClient({
               <Badge variant="secondary">@soniqueteconarteflamencoMadrid</Badge>
             </div>
             <h2 className="text-lg font-semibold">
-              Centro Integral de Promoción de Intérpretes, Conciertos, Salas y Servicios Artísticos
+              Centro Integral de Promoción de Intérpretes, Conciertos, Viajes, Conferencias, Entrevistas y Salas
             </h2>
             <p className="text-sm text-muted-foreground">
-              Gestiona intérpretes (biografía, estilos, grupo, guitarrista titular y pack de 9 vídeos .mp4 + portadas), salas de flamenco, salas de conciertos, ateneos y administración, simula ofertas conectadas con Envíos y capta contactos desde páginas web.
+              Gestiona intérpretes (con sus vídeos de conciertos en la plataforma o vía YouTube y multimedia abierto), eventos con mínimo de asistentes para no cancelarse y reservas provisionales cuando aún no se sabe fecha/lugar con aviso automático para confirmar.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -189,11 +222,11 @@ export function PromocionClient({
             </div>
             <div className="rounded-xl border bg-muted/40 px-3 py-2 text-center">
               <div className="text-xl font-bold">{snapshot.concerts.length}</div>
-              <div className="text-xs text-muted-foreground">Conciertos</div>
+              <div className="text-xs text-muted-foreground">Conciertos y Eventos</div>
             </div>
             <div className="rounded-xl border bg-muted/40 px-3 py-2 text-center">
               <div className="text-xl font-bold">{snapshot.mediaAssets.length}</div>
-              <div className="text-xs text-muted-foreground">Piezas .MP4 / Flyers</div>
+              <div className="text-xs text-muted-foreground">Multimedia / YouTube</div>
             </div>
           </div>
         </div>
@@ -214,10 +247,10 @@ export function PromocionClient({
       {/* Pestañas de navegación */}
       <div className="flex flex-wrap gap-2 border-b pb-3">
         {[
-          { key: "interpretes", label: "1. Intérpretes", icon: Music },
-          { key: "multimedia", label: "2. Pack 9 Vídeos .MP4 y Flyers", icon: Film },
+          { key: "interpretes", label: "1. Intérpretes y Vídeos Conciertos/YouTube", icon: Music },
+          { key: "multimedia", label: "2. Pack 9 Vídeos .MP4 + Multimedia Abierto", icon: Film },
           { key: "salas", label: "3. Salas, Ateneos y Admón.", icon: Building2 },
-          { key: "conciertos", label: "4. Conciertos y Contratos", icon: CalendarCheck2 },
+          { key: "conciertos", label: "4. Conciertos, Eventos y Reservas Provisionales", icon: CalendarCheck2 },
           { key: "simulador", label: "5. Simulador Ofertas → Envíos", icon: Megaphone },
           { key: "captacion_web", label: "6. Captar Salas/Artistas de Web", icon: Globe },
           { key: "servicios_artistas", label: "7. Servicios Digitales a Artistas", icon: Sparkles },
@@ -240,7 +273,7 @@ export function PromocionClient({
         })}
       </div>
 
-      {/* TAB 1: INTÉRPRETES */}
+      {/* TAB 1: INTÉRPRETES (CON VÍDEOS DE CONCIERTOS EN NUESTRA PLATAFORMA, YOUTUBE Y MULTIMEDIA ADICIONAL) */}
       {activeTab === "interpretes" && (
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="space-y-4 lg:col-span-2">
@@ -249,9 +282,25 @@ export function PromocionClient({
             </h3>
             <div className="grid gap-4">
               {snapshot.artists.map((artist) => {
-                const mediaCount = snapshot.mediaAssets.filter(
-                  (m) => m.artistId === artist.id,
-                ).length
+                // Conciertos/eventos donde participa este artista
+                const artistConcerts = snapshot.concerts.filter(
+                  (c) => c.artistId === artist.id,
+                )
+                const artistConcertIds = new Set(artistConcerts.map((c) => c.id))
+                // Todas las piezas del artista + todas las piezas de sus conciertos
+                const allArtistAndConcertMedia = snapshot.mediaAssets.filter(
+                  (m) =>
+                    m.artistId === artist.id ||
+                    (m.concertId && artistConcertIds.has(m.concertId)),
+                )
+                const concertAndYoutubeVideos = allArtistAndConcertMedia.filter(
+                  (m) =>
+                    Boolean(m.concertId) ||
+                    m.sourcePlatform === "youtube" ||
+                    m.pieceCode === "custom_otro",
+                )
+                const isExpanded = expandedArtistIdForVideos === artist.id
+
                 return (
                   <div
                     key={artist.id}
@@ -276,18 +325,30 @@ export function PromocionClient({
                           </p>
                         ) : null}
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedArtistIdForMedia(artist.id)
-                          setSelectedConcertIdForMedia("")
-                          setActiveTab("multimedia")
-                        }}
-                      >
-                        <Video className="mr-1.5 size-4" />
-                        Ver Pack Multimedia ({mediaCount} piezas)
-                      </Button>
+                      <div className="flex flex-wrap gap-1.5">
+                        <Button
+                          variant={isExpanded ? "default" : "outline"}
+                          size="sm"
+                          onClick={() =>
+                            setExpandedArtistIdForVideos(isExpanded ? null : artist.id)
+                          }
+                        >
+                          <PlayCircle className="mr-1.5 size-4" />
+                          Vídeos de Conciertos y YouTube ({concertAndYoutubeVideos.length})
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedArtistIdForMedia(artist.id)
+                            setSelectedConcertIdForMedia("")
+                            setActiveTab("multimedia")
+                          }}
+                        >
+                          <Video className="mr-1.5 size-4" />
+                          Pack Completo ({allArtistAndConcertMedia.length})
+                        </Button>
+                      </div>
                     </div>
 
                     <p className="mt-2 text-sm text-muted-foreground">{artist.biography}</p>
@@ -314,6 +375,96 @@ export function PromocionClient({
                           : "Según disponibilidad"}
                       </div>
                     </div>
+
+                    {/* Sección desplegable en la ficha del artista: Vídeos de conciertos en nuestra plataforma, YouTube y otros multimedias abiertos */}
+                    {isExpanded && (
+                      <div className="mt-4 space-y-3 rounded-xl border bg-muted/20 p-3.5">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <h5 className="text-xs font-bold uppercase tracking-wide text-primary">
+                            🎬 Vídeos de Conciertos (en nuestra plataforma o vía YouTube) y Multimedia Adicional de {artist.artisticName}
+                          </h5>
+                          {artist.youtubeChannelUrl ? (
+                            <a
+                              href={artist.youtubeChannelUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-xs font-medium text-red-600 underline dark:text-red-400"
+                            >
+                              Canal de YouTube del Artista <ExternalLink className="size-3" />
+                            </a>
+                          ) : null}
+                        </div>
+
+                        {concertAndYoutubeVideos.length === 0 ? (
+                          <p className="text-xs text-muted-foreground">
+                            Aún no hay vídeos de conciertos específicos o enlaces de YouTube adicionales. Puedes añadir cualquier vídeo de YouTube o multimedia libre en la pestaña 2.
+                          </p>
+                        ) : (
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            {concertAndYoutubeVideos.slice(0, 8).map((vid) => {
+                              const parentConcert = snapshot.concerts.find(
+                                (c) => c.id === vid.concertId,
+                              )
+                              return (
+                                <div
+                                  key={vid.id}
+                                  className="rounded-lg border bg-card p-3 text-xs shadow-2xs"
+                                >
+                                  <div className="flex items-start justify-between gap-2">
+                                    <span className="font-semibold">{vid.title}</span>
+                                    <Badge
+                                      variant={
+                                        vid.sourcePlatform === "youtube" ? "default" : "outline"
+                                      }
+                                      className="text-[10px]"
+                                    >
+                                      {vid.sourcePlatform === "youtube"
+                                        ? "YouTube"
+                                        : vid.customPieceLabel || vid.formatLabel}
+                                    </Badge>
+                                  </div>
+                                  {parentConcert ? (
+                                    <div className="mt-1 text-[11px] font-medium text-primary">
+                                      📍 Evento: {parentConcert.title}
+                                    </div>
+                                  ) : null}
+                                  {vid.youtubeVideoId ? (
+                                    <div className="mt-2 aspect-video overflow-hidden rounded-md border bg-black">
+                                      <iframe
+                                        className="size-full"
+                                        src={`https://www.youtube.com/embed/${vid.youtubeVideoId}`}
+                                        title={vid.title}
+                                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                        allowFullScreen
+                                      />
+                                    </div>
+                                  ) : null}
+                                  <p className="mt-1.5 text-[11px] text-muted-foreground">
+                                    {vid.recommendedUse}
+                                  </p>
+                                  <div className="mt-2 flex items-center justify-between border-t pt-1.5">
+                                    <span className="text-[11px] text-muted-foreground">
+                                      {vid.dimensions}
+                                    </span>
+                                    <a
+                                      href={vid.fileUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+                                    >
+                                      {vid.sourcePlatform === "youtube"
+                                        ? "Ver en YouTube"
+                                        : "Reproducir en plataforma"}{" "}
+                                      <ExternalLink className="size-3" />
+                                    </a>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                       {artist.email ? <span>✉️ {artist.email}</span> : null}
@@ -497,7 +648,7 @@ export function PromocionClient({
         </div>
       )}
 
-      {/* TAB 2: PACK MULTIMEDIA DE 9 VÍDEOS .MP4, PORTADAS, MINIATURA Y FLYERS */}
+      {/* TAB 2: PACK MULTIMEDIA DE 9 VÍDEOS .MP4, PORTADAS, MINIATURA, FLYERS Y MULTIMEDIA ABIERTO / YOUTUBE */}
       {activeTab === "multimedia" && (
         <div className="space-y-6">
           {/* Tabla oficial solicitada: "2. Para qué sirve cada salida" */}
@@ -505,13 +656,13 @@ export function PromocionClient({
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h3 className="text-base font-bold">
-                  Guía Oficial del Pack Multimedia para Intérpretes y Conciertos: «2. Para qué sirve cada salida»
+                  Guía Oficial del Pack Multimedia para Intérpretes y Conciertos: «2. Para qué sirve cada salida» (+ Multimedia Abierto y YouTube)
                 </h3>
                 <p className="text-xs text-muted-foreground">
-                  Cada intérprete y cada concierto dispone de estas 9 salidas de vídeo .mp4 más Portadas (1080×1920 y 1080×1350), Miniatura (1920×1080) y Flyers/Cartelería.
+                  Cada intérprete y cada concierto/evento dispone de las 12 salidas estándar y además admite cualquier otro formato multimedia abierto (vídeos de conciertos en YouTube, entrevistas, audios, reportajes o prensa).
                 </p>
               </div>
-              <Badge variant="default">Estándar de Promoción Soniquete con Arte</Badge>
+              <Badge variant="default">12 Estándar + Abierto a Otros y YouTube</Badge>
             </div>
 
             <div className="overflow-x-auto">
@@ -544,6 +695,20 @@ export function PromocionClient({
                       </td>
                     </tr>
                   ))}
+                  <tr className="bg-primary/5">
+                    <td className="p-2.5 font-bold text-primary">
+                      + Multimedia Abierto / Vídeos YouTube / Otros
+                    </td>
+                    <td className="p-2.5 text-muted-foreground">
+                      YouTube, Vimeo, MP4 en plataforma, Audio, Galería, Prensa
+                    </td>
+                    <td className="p-2.5">
+                      Grabaciones en directo de conciertos (en nuestra plataforma o en YouTube), entrevistas públicas, documentales, reportajes o cualquier pieza especial.
+                    </td>
+                    <td className="p-2.5">
+                      <Badge>Abierto / Permanente</Badge>
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -553,7 +718,7 @@ export function PromocionClient({
             </div>
           </div>
 
-          {/* Selector de Intérprete o Concierto para ver sus piezas */}
+          {/* Selector de Intérprete o Concierto/Evento para ver sus piezas */}
           <div className="grid gap-6 lg:grid-cols-3">
             <div className="space-y-4 lg:col-span-2">
               <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-4">
@@ -576,7 +741,7 @@ export function PromocionClient({
                   </select>
                 </div>
                 <div className="flex-1">
-                  <Label>O filtrar por Concierto</Label>
+                  <Label>O filtrar por Concierto / Evento</Label>
                   <select
                     className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
                     value={selectedConcertIdForMedia}
@@ -585,7 +750,7 @@ export function PromocionClient({
                       if (e.target.value) setSelectedArtistIdForMedia("")
                     }}
                   >
-                    <option value="">Todos los conciertos</option>
+                    <option value="">Todos los conciertos y eventos</option>
                     {snapshot.concerts.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.title}
@@ -608,13 +773,13 @@ export function PromocionClient({
                             subjectName: art.artisticName,
                           })
                           setFeedback(
-                            `Se han generado ${res.countCreated} piezas multimedia para ${art.artisticName}.`,
+                            `Se han generado ${res.countCreated} piezas multimedia estándar para ${art.artisticName}.`,
                           )
                         })
                       }}
                     >
                       <Layers className="mr-1.5 size-4" />
-                      Regenerar las 12 piezas
+                      Regenerar las 12 piezas estándar
                     </Button>
                   </div>
                 ) : null}
@@ -629,7 +794,7 @@ export function PromocionClient({
                     <div>
                       <div className="flex items-start justify-between gap-2">
                         <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
-                          {asset.fileUrl.endsWith(".mp4") ? (
+                          {asset.sourcePlatform === "youtube" || asset.fileUrl.endsWith(".mp4") ? (
                             <Film className="size-4 text-primary" />
                           ) : (
                             <ImageIcon className="size-4 text-primary" />
@@ -637,9 +802,22 @@ export function PromocionClient({
                           {asset.title}
                         </span>
                         <Badge variant="secondary" className="text-[10px]">
-                          {asset.formatLabel}
+                          {asset.sourcePlatform === "youtube"
+                            ? "YouTube"
+                            : asset.customPieceLabel || asset.formatLabel}
                         </Badge>
                       </div>
+                      {asset.youtubeVideoId ? (
+                        <div className="mt-2 aspect-video overflow-hidden rounded-lg border bg-black">
+                          <iframe
+                            className="size-full"
+                            src={`https://www.youtube.com/embed/${asset.youtubeVideoId}`}
+                            title={asset.title}
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowFullScreen
+                          />
+                        </div>
+                      ) : null}
                       <p className="mt-1.5 text-xs text-muted-foreground">
                         {asset.recommendedUse}
                       </p>
@@ -655,7 +833,7 @@ export function PromocionClient({
                         rel="noreferrer"
                         className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
                       >
-                        Abrir archivo <ExternalLink className="size-3" />
+                        Abrir ({asset.sourcePlatform}) <ExternalLink className="size-3" />
                       </a>
                     </div>
                   </div>
@@ -666,15 +844,13 @@ export function PromocionClient({
             {canManage && (
               <div className="rounded-xl border bg-card p-4 shadow-xs">
                 <h4 className="mb-3 text-sm font-semibold">
-                  Añadir vídeo .MP4, Portada, Miniatura o Flyer
+                  Añadir Pieza Estándar, Vídeo YouTube o Multimedia Abierto
                 </h4>
                 <form
                   className="space-y-3"
                   onSubmit={(e) => {
                     e.preventDefault()
-                    const pieceMeta =
-                      FLAMENCO_MEDIA_PIECES.find((p) => p.code === pieceCode) ??
-                      FLAMENCO_MEDIA_PIECES[0]
+                    const pieceMeta = FLAMENCO_MEDIA_PIECES.find((p) => p.code === pieceCode)
                     const targetArtist = snapshot.artists.find(
                       (a) => a.id === selectedArtistIdForMedia,
                     )
@@ -682,25 +858,40 @@ export function PromocionClient({
                       await createMediaAssetAction({
                         artistId: selectedArtistIdForMedia || snapshot.artists[0]?.id,
                         concertId: selectedConcertIdForMedia || null,
-                        pieceCode: pieceMeta.code,
-                        title: `${targetArtist?.artisticName ?? "Artista"} · ${pieceMeta.label}`,
-                        formatLabel: pieceMeta.formatLabel,
-                        durationSeconds: pieceMeta.durationSeconds,
-                        maxSizeMb: pieceMeta.maxSizeMb,
-                        dimensions: pieceMeta.dimensions,
-                        recommendedUse: pieceMeta.recommendedUse,
+                        pieceCode,
+                        customPieceLabel:
+                          pieceCode === "custom_otro"
+                            ? customPieceLabel || "Multimedia Especial"
+                            : null,
+                        sourcePlatform,
+                        title:
+                          customTitle.trim() ||
+                          `${targetArtist?.artisticName ?? "Artista"} · ${pieceMeta?.label ?? (customPieceLabel || "Vídeo / Multimedia")}`,
+                        formatLabel:
+                          pieceMeta?.formatLabel ??
+                          (sourcePlatform === "youtube" ? "YouTube HD" : "Multimedia Abierto"),
+                        durationSeconds: pieceMeta?.durationSeconds ?? null,
+                        maxSizeMb: pieceMeta?.maxSizeMb ?? null,
+                        dimensions: pieceMeta?.dimensions ?? "1920×1080",
+                        recommendedUse:
+                          customUse.trim() ||
+                          pieceMeta?.recommendedUse ||
+                          "Vídeo de concierto / entrevista / contenido especial para web y redes.",
                         fileUrl:
                           pieceUrl ||
-                          `https://cdn.soniqueteconarte.com/media/custom/${pieceMeta.code}.mp4`,
-                        releasePhase: pieceMeta.releasePhase,
+                          `https://cdn.soniqueteconarte.com/media/custom/${pieceCode}.mp4`,
+                        releasePhase: pieceMeta?.releasePhase ?? "referencia_web",
                       })
                       setPieceUrl("")
-                      setFeedback(`Pieza «${pieceMeta.label}» añadida correctamente.`)
+                      setCustomTitle("")
+                      setCustomPieceLabel("")
+                      setCustomUse("")
+                      setFeedback("Pieza multimedia añadida correctamente.")
                     })
                   }}
                 >
                   <div>
-                    <Label>Tipo de salida (de las 12 oficiales)</Label>
+                    <Label>Tipo de salida (12 estándar o Abierto a otros)</Label>
                     <select
                       className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
                       value={pieceCode}
@@ -711,20 +902,70 @@ export function PromocionClient({
                           {p.label} ({p.dimensions})
                         </option>
                       ))}
+                      <option value="custom_otro">
+                        ★ Otro Multimedia Adicional (Abierto: Concierto YouTube, Entrevista, Audio, Prensa...)
+                      </option>
                     </select>
                   </div>
+
+                  {pieceCode === "custom_otro" && (
+                    <div>
+                      <Label>Etiqueta del formato libre *</Label>
+                      <Input
+                        required
+                        value={customPieceLabel}
+                        onChange={(e) => setCustomPieceLabel(e.target.value)}
+                        placeholder="Ej. Directo completo YouTube / Entrevista TV / Crítica prensa"
+                      />
+                    </div>
+                  )}
+
                   <div>
-                    <Label>URL del archivo (.mp4, .jpg o .pdf)</Label>
+                    <Label>Plataforma de origen</Label>
+                    <select
+                      className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                      value={sourcePlatform}
+                      onChange={(e) => setSourcePlatform(e.target.value as MediaSourcePlatform)}
+                    >
+                      {Object.entries(MEDIA_SOURCE_PLATFORM_LABELS).map(([k, v]) => (
+                        <option key={k} value={k}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <Label>Título de la pieza (opcional)</Label>
+                    <Input
+                      value={customTitle}
+                      onChange={(e) => setCustomTitle(e.target.value)}
+                      placeholder="Ej. Directo en Sala Villanos · Soleá por Bulerías"
+                    />
+                  </div>
+
+                  <div>
+                    <Label>URL del archivo (.mp4, .jpg, .pdf) o enlace de YouTube *</Label>
                     <Input
                       required
                       value={pieceUrl}
                       onChange={(e) => setPieceUrl(e.target.value)}
-                      placeholder="https://cdn.soniqueteconarte.com/videos/reel-58s.mp4"
+                      placeholder="https://www.youtube.com/watch?v=... o https://cdn.../video.mp4"
                     />
                   </div>
+
+                  <div>
+                    <Label>Para qué sirve / Notas de difusión (opcional)</Label>
+                    <Input
+                      value={customUse}
+                      onChange={(e) => setCustomUse(e.target.value)}
+                      placeholder="Ej. Mostrar en la ficha del artista y en la landing del evento"
+                    />
+                  </div>
+
                   <Button type="submit" disabled={isPending} className="w-full">
                     <Plus className="mr-1.5 size-4" />
-                    Adjuntar pieza multimedia
+                    Adjuntar pieza multimedia / vídeo YouTube
                   </Button>
                 </form>
               </div>
@@ -908,13 +1149,13 @@ export function PromocionClient({
         </div>
       )}
 
-      {/* TAB 4: CONCIERTOS Y CONTRATOS */}
+      {/* TAB 4: CONCIERTOS, OTROS EVENTOS (VIAJES, CONFERENCIAS, ENTREVISTAS), MÍNIMO ASISTENTES Y RESERVAS PROVISIONALES */}
       {activeTab === "conciertos" && (
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="space-y-6 lg:col-span-2">
             <div className="space-y-3">
               <h3 className="text-base font-semibold">
-                Conciertos y Producciones ({snapshot.concerts.length})
+                Conciertos, Viajes Flamencos, Conferencias y Entrevistas Públicas ({snapshot.concerts.length})
               </h3>
               {snapshot.concerts.map((c) => {
                 const art = snapshot.artists.find((a) => a.id === c.artistId)
@@ -922,18 +1163,35 @@ export function PromocionClient({
                 const mediaCount = snapshot.mediaAssets.filter(
                   (m) => m.concertId === c.id,
                 ).length
+                const eventProvBookings = snapshot.provisionalBookings.filter(
+                  (b) => b.concertId === c.id,
+                )
+                const belowMin =
+                  c.cancelIfBelowMinAttendees && c.currentAttendees < c.minAttendees
+
                 return (
-                  <div key={c.id} className="rounded-xl border bg-card p-4 shadow-xs">
+                  <div key={c.id} className="space-y-3 rounded-xl border bg-card p-4 shadow-xs">
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="secondary">
+                            {EVENT_KIND_LABELS[c.eventKind as EventKind] ?? c.eventKind}
+                          </Badge>
                           <h4 className="font-bold">{c.title}</h4>
                           <Badge>{CONCERT_STATUS_LABELS[c.status] ?? c.status}</Badge>
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          Intérprete: <strong>{art?.artisticName ?? "—"}</strong> · Sala:{" "}
-                          <strong>{ven?.name ?? "—"}</strong> · Fecha:{" "}
-                          {new Date(c.startsAt).toLocaleString("es-ES")}
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Protagonista / Intérprete: <strong>{art?.artisticName ?? "—"}</strong> ·{" "}
+                          {c.dateAndPlaceTbd ? (
+                            <span className="font-semibold text-amber-600 dark:text-amber-400">
+                              ⏳ Fecha y lugar aún por determinar (Admite reservas provisionales)
+                            </span>
+                          ) : (
+                            <>
+                              Lugar: <strong>{ven?.name ?? "Por confirmar"}</strong> · Fecha:{" "}
+                              {new Date(c.startsAt).toLocaleString("es-ES")}
+                            </>
+                          )}
                         </p>
                       </div>
                       <Button
@@ -946,15 +1204,150 @@ export function PromocionClient({
                         }}
                       >
                         <Film className="mr-1.5 size-4" />
-                        Vídeos y Carteles del Concierto ({mediaCount})
+                        Multimedia del Evento ({mediaCount})
                       </Button>
                     </div>
-                    <div className="mt-2 flex flex-wrap items-center gap-4 text-xs">
-                      <span>💶 Caché acordado: {c.agreedCacheEur} €</span>
-                      <span>🎸 Guitarra: {c.guitaristName || "Titular"}</span>
-                      <span>
-                        👥 Formación: {c.bringsGroup ? c.lineupDetails || "Cuadro completo" : "Solista"}
-                      </span>
+
+                    {/* Bloques de reglas de negocio pedidas: Mínimo de asistentes y Reservas provisionales sin fecha/lugar */}
+                    <div className="grid gap-2 rounded-lg bg-muted/40 p-3 text-xs sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1.5 font-semibold">
+                          <Users className="size-3.5 text-primary" />
+                          Regla de Aforo Mínimo:
+                        </div>
+                        {c.cancelIfBelowMinAttendees ? (
+                          <div className="space-y-1">
+                            <span
+                              className={
+                                belowMin
+                                  ? "font-medium text-amber-700 dark:text-amber-300"
+                                  : "font-medium text-emerald-700 dark:text-emerald-300"
+                              }
+                            >
+                              Si no llega a {c.minAttendees} asistentes se cancela · Actual:{" "}
+                              {c.currentAttendees} asistentes
+                            </span>
+                            {canManage && c.status !== "cancelado" ? (
+                              <div>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-[11px]"
+                                  disabled={isPending}
+                                  onClick={() => {
+                                    startTransition(async () => {
+                                      const res = await evaluateMinAttendeesAction(c.id)
+                                      setFeedback(res.message)
+                                    })
+                                  }}
+                                >
+                                  <AlertTriangle className="mr-1 size-3" />
+                                  Comprobar mínimo ({c.currentAttendees}/{c.minAttendees})
+                                </Button>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">
+                            Sin cancelación por mínimo de asistentes (Actual: {c.currentAttendees})
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1.5 font-semibold">
+                          <BellRing className="size-3.5 text-primary" />
+                          Reservas Provisionales y Aviso Automático:
+                        </div>
+                        <div>
+                          {c.provisionalBookingsOpen || c.dateAndPlaceTbd ? (
+                            <span className="font-medium text-sky-700 dark:text-sky-300">
+                              Admite reservas provisionales ({eventProvBookings.length} registradas) ·{" "}
+                              {c.autoNotifyToConfirm
+                                ? "Aviso automático ACTIVO para confirmar"
+                                : "Aviso manual"}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">
+                              Fecha y lugar cerrados ({eventProvBookings.length} reservas provisionales)
+                            </span>
+                          )}
+                        </div>
+                        {canManage && eventProvBookings.length > 0 ? (
+                          <div>
+                            <Button
+                              variant="default"
+                              size="sm"
+                              className="h-7 text-[11px]"
+                              disabled={isPending}
+                              onClick={() => {
+                                startTransition(async () => {
+                                  const res = await notifyProvisionalBookingsAction({
+                                    concertId: c.id,
+                                  })
+                                  setFeedback(
+                                    `Se ha enviado el aviso automático de confirmación (SMS Zadarma y estado actualizado) a ${res.notifiedCount} reservas provisionales de «${c.title}».`,
+                                  )
+                                })
+                              }}
+                            >
+                              <BellRing className="mr-1 size-3" />
+                              Enviar aviso automático para que confirmen ({eventProvBookings.length})
+                            </Button>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {eventProvBookings.length > 0 && (
+                      <div className="rounded-lg border bg-background p-2.5 text-xs">
+                        <div className="mb-1.5 font-semibold">
+                          Reservas Provisionales de este Evento ({eventProvBookings.length}):
+                        </div>
+                        <div className="space-y-1.5">
+                          {eventProvBookings.map((b) => (
+                            <div
+                              key={b.id}
+                              className="flex flex-wrap items-center justify-between gap-2 border-t pt-1.5"
+                            >
+                              <span>
+                                <strong>{b.attendeeName}</strong> ({b.seats} plazas) ·{" "}
+                                {b.attendeeEmail || b.attendeePhone || "Sin contacto"}
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <Badge
+                                  variant={b.status === "confirmada" ? "default" : "outline"}
+                                >
+                                  {b.status}
+                                </Badge>
+                                {canManage && b.status !== "confirmada" ? (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 px-2 text-[11px]"
+                                    onClick={() => {
+                                      startTransition(async () => {
+                                        await confirmProvisionalBookingAction(b.id)
+                                        setFeedback(
+                                          `Reserva de ${b.attendeeName} marcada como confirmada.`,
+                                        )
+                                      })
+                                    }}
+                                  >
+                                    Confirmar plaza
+                                  </Button>
+                                ) : null}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap items-center gap-4 text-xs">
+                      <span>💶 Presupuesto/Caché: {c.agreedCacheEur} €</span>
+                      <span>🎟 Entrada/Inscripción: {c.ticketPriceEur} €</span>
+                      {c.guitaristName ? <span>🎸 Guitarra: {c.guitaristName}</span> : null}
                       {c.calcomMeetingUrl ? (
                         <a
                           href={c.calcomMeetingUrl}
@@ -1017,9 +1410,10 @@ export function PromocionClient({
 
           {canManage && (
             <div className="space-y-6">
+              {/* Formulario Crear Concierto u Otro Evento (Viaje, Conferencia, Entrevista, etc.) */}
               <div className="rounded-xl border bg-card p-4 shadow-xs">
                 <h4 className="mb-3 text-sm font-semibold">
-                  Programar Concierto (+ Pack 12 Vídeos + Cita Cal.com)
+                  Crear Concierto, Viaje, Conferencia o Entrevista Pública
                 </h4>
                 <form
                   className="space-y-3"
@@ -1028,9 +1422,18 @@ export function PromocionClient({
                     startTransition(async () => {
                       const created = await createConcertAction({
                         title: concertTitle,
+                        eventKind,
                         artistId: concertArtistId,
-                        venueId: concertVenueId,
-                        startsAtIso: new Date(concertDate).toISOString(),
+                        venueId: dateAndPlaceTbd ? null : concertVenueId,
+                        startsAtIso: dateAndPlaceTbd
+                          ? null
+                          : new Date(concertDate).toISOString(),
+                        dateAndPlaceTbd,
+                        provisionalBookingsOpen,
+                        autoNotifyToConfirm,
+                        cancelIfBelowMinAttendees,
+                        minAttendees: Number(minAttendees) || 0,
+                        currentAttendees: Number(currentAttendees) || 0,
                         agreedCacheEur: Number(concertCache) || 2200,
                         guitaristName: concertGuitarist,
                         bringsGroup: true,
@@ -1038,23 +1441,38 @@ export function PromocionClient({
                         generateStandardMediaPack: true,
                       })
                       setConcertTitle("")
+                      setProvEventId(created.id)
                       setFeedback(
-                        `Concierto «${created.title}» creado con su sala de reunión Cal.com y su Pack de 12 piezas multimedia.`,
+                        `Evento «${created.title}» (${EVENT_KIND_LABELS[eventKind]}) creado correctamente.`,
                       )
                     })
                   }}
                 >
                   <div>
-                    <Label>Título del espectáculo *</Label>
+                    <Label>Tipo de Evento *</Label>
+                    <select
+                      className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                      value={eventKind}
+                      onChange={(e) => setEventKind(e.target.value as EventKind)}
+                    >
+                      {Object.entries(EVENT_KIND_LABELS).map(([k, v]) => (
+                        <option key={k} value={k}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <Label>Título del concierto, viaje, conferencia o entrevista *</Label>
                     <Input
                       required
                       value={concertTitle}
                       onChange={(e) => setConcertTitle(e.target.value)}
-                      placeholder="Ej. Noche de Jondo y Compás en Madrid"
+                      placeholder="Ej. Viaje al Jerez Flamenco / Conferencia Ilustrada de Cante"
                     />
                   </div>
                   <div>
-                    <Label>Intérprete</Label>
+                    <Label>Intérprete / Ponente principal</Label>
                     <select
                       className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
                       value={concertArtistId}
@@ -1067,48 +1485,209 @@ export function PromocionClient({
                       ))}
                     </select>
                   </div>
-                  <div>
-                    <Label>Sala / Ateneo / Teatro</Label>
-                    <select
-                      className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
-                      value={concertVenueId}
-                      onChange={(e) => setConcertVenueId(e.target.value)}
-                    >
-                      {snapshot.venues.map((v) => (
-                        <option key={v.id} value={v.id}>
-                          {v.name} ({v.city})
-                        </option>
-                      ))}
-                    </select>
+
+                  {/* Propiedad 1: No se sabe aún la fecha ni el lugar pero se admiten reservas provisionales */}
+                  <div className="space-y-2 rounded-lg border bg-muted/30 p-3 text-xs">
+                    <label className="flex items-start gap-2 font-medium">
+                      <input
+                        type="checkbox"
+                        checked={dateAndPlaceTbd}
+                        onChange={(e) => {
+                          setDateAndPlaceTbd(e.target.checked)
+                          if (e.target.checked) setProvisionalBookingsOpen(true)
+                        }}
+                      />
+                      <span>
+                        No se sabe aún la fecha ni el lugar, pero se admiten reservas provisionales
+                      </span>
+                    </label>
+                    <label className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        checked={provisionalBookingsOpen}
+                        onChange={(e) => setProvisionalBookingsOpen(e.target.checked)}
+                      />
+                      <span>Admitir reservas provisionales de plazas</span>
+                    </label>
+                    <label className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        checked={autoNotifyToConfirm}
+                        onChange={(e) => setAutoNotifyToConfirm(e.target.checked)}
+                      />
+                      <span>
+                        Enviar aviso automático a los inscritos para que confirmen su reserva cuando se fije fecha y lugar
+                      </span>
+                    </label>
                   </div>
+
+                  {!dateAndPlaceTbd && (
+                    <>
+                      <div>
+                        <Label>Sala / Ateneo / Lugar</Label>
+                        <select
+                          className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                          value={concertVenueId}
+                          onChange={(e) => setConcertVenueId(e.target.value)}
+                        >
+                          {snapshot.venues.map((v) => (
+                            <option key={v.id} value={v.id}>
+                              {v.name} ({v.city})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <Label>Fecha y hora</Label>
+                        <Input
+                          type="datetime-local"
+                          value={concertDate}
+                          onChange={(e) => setConcertDate(e.target.value)}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {/* Propiedad 2: Si no se llega al número de asistentes se cancela */}
+                  <div className="space-y-2 rounded-lg border bg-muted/30 p-3 text-xs">
+                    <label className="flex items-start gap-2 font-medium">
+                      <input
+                        type="checkbox"
+                        checked={cancelIfBelowMinAttendees}
+                        onChange={(e) => setCancelIfBelowMinAttendees(e.target.checked)}
+                      />
+                      <span>
+                        Si no se llega al número mínimo de asistentes se cancela el evento
+                      </span>
+                    </label>
+                    {cancelIfBelowMinAttendees && (
+                      <div className="grid grid-cols-2 gap-2 pt-1">
+                        <div>
+                          <Label className="text-xs">Mínimo requerido</Label>
+                          <Input
+                            type="number"
+                            value={minAttendees}
+                            onChange={(e) => setMinAttendees(e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Asistentes actuales</Label>
+                          <Input
+                            type="number"
+                            value={currentAttendees}
+                            onChange={(e) => setCurrentAttendees(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <Label>Fecha y hora</Label>
-                      <Input
-                        type="datetime-local"
-                        value={concertDate}
-                        onChange={(e) => setConcertDate(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <Label>Caché (€)</Label>
+                      <Label>Caché / Presupuesto (€)</Label>
                       <Input
                         type="number"
                         value={concertCache}
                         onChange={(e) => setConcertCache(e.target.value)}
                       />
                     </div>
-                  </div>
-                  <div>
-                    <Label>Guitarrista asignado</Label>
-                    <Input
-                      value={concertGuitarist}
-                      onChange={(e) => setConcertGuitarist(e.target.value)}
-                    />
+                    <div>
+                      <Label>Guitarrista / Acompañante</Label>
+                      <Input
+                        value={concertGuitarist}
+                        onChange={(e) => setConcertGuitarist(e.target.value)}
+                      />
+                    </div>
                   </div>
                   <Button type="submit" disabled={isPending} className="w-full">
                     <CalendarCheck2 className="mr-1.5 size-4" />
-                    Crear Concierto + Sala Cal.com
+                    Guardar Evento + Sala Cal.com
+                  </Button>
+                </form>
+              </div>
+
+              {/* Formulario Registrar Reserva Provisional en un Evento */}
+              <div className="rounded-xl border bg-card p-4 shadow-xs">
+                <h4 className="mb-2 text-sm font-semibold">
+                  Registrar Reserva Provisional (para Eventos sin fecha/lugar o en preinscripción)
+                </h4>
+                <form
+                  className="space-y-3"
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    startTransition(async () => {
+                      const res = await createProvisionalBookingAction({
+                        concertId: provEventId || snapshot.concerts[0]?.id,
+                        attendeeName: provName,
+                        attendeeEmail: provEmail,
+                        attendeePhone: provPhone,
+                        seats: Number(provSeats) || 1,
+                      })
+                      setProvName("")
+                      setProvEmail("")
+                      setProvPhone("")
+                      setFeedback(
+                        `Reserva provisional registrada (${res.booking.seats} plazas). Total asistentes ahora: ${res.currentAttendees}.`,
+                      )
+                    })
+                  }}
+                >
+                  <div>
+                    <Label>Evento</Label>
+                    <select
+                      className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                      value={provEventId}
+                      onChange={(e) => setProvEventId(e.target.value)}
+                    >
+                      {snapshot.concerts.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="col-span-2">
+                      <Label>Nombre del interesado *</Label>
+                      <Input
+                        required
+                        value={provName}
+                        onChange={(e) => setProvName(e.target.value)}
+                        placeholder="Ej. Ana Belén Gómez"
+                      />
+                    </div>
+                    <div>
+                      <Label>Plazas</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={provSeats}
+                        onChange={(e) => setProvSeats(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label>Email (para aviso)</Label>
+                      <Input
+                        type="email"
+                        value={provEmail}
+                        onChange={(e) => setProvEmail(e.target.value)}
+                        placeholder="cliente@correo.es"
+                      />
+                    </div>
+                    <div>
+                      <Label>Móvil (para SMS Zadarma)</Label>
+                      <Input
+                        value={provPhone}
+                        onChange={(e) => setProvPhone(e.target.value)}
+                        placeholder="+34 600..."
+                      />
+                    </div>
+                  </div>
+                  <Button type="submit" variant="secondary" disabled={isPending} className="w-full">
+                    <Plus className="mr-1.5 size-4" />
+                    Anotar Reserva Provisional
                   </Button>
                 </form>
               </div>

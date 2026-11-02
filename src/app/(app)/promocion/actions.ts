@@ -2,14 +2,18 @@
 
 import { revalidatePath } from "next/cache"
 import {
+  confirmEventProvisionalBooking,
   createArtistDigitalService,
+  createEventProvisionalBooking,
   createFlamencoArtist,
   createFlamencoConcert,
   createFlamencoContract,
   createFlamencoMediaAsset,
   createFlamencoRepresentative,
   createFlamencoVenue,
+  evaluateEventMinAttendeesCancellation,
   generateFullMediaPackAction,
+  notifyProvisionalBookingsToConfirm,
   scrapeWebEntityForFlamenco,
   simulateAndScheduleConcertOffer,
 } from "@/data/flamenco"
@@ -62,6 +66,36 @@ export async function createConcertAction(input: unknown) {
   const created = await createFlamencoConcert(actor, input)
   revalidatePath("/promocion")
   return created
+}
+
+export async function createProvisionalBookingAction(input: unknown) {
+  const actor = await requireActor()
+  const res = await createEventProvisionalBooking(actor, input)
+  revalidatePath("/promocion")
+  revalidatePath("/contactos")
+  return res
+}
+
+export async function notifyProvisionalBookingsAction(input: unknown) {
+  const actor = await requireActor()
+  const res = await notifyProvisionalBookingsToConfirm(actor, input)
+  revalidatePath("/promocion")
+  revalidatePath("/llamadas")
+  return res
+}
+
+export async function confirmProvisionalBookingAction(bookingId: string) {
+  const actor = await requireActor()
+  const res = await confirmEventProvisionalBooking(actor, bookingId)
+  revalidatePath("/promocion")
+  return res
+}
+
+export async function evaluateMinAttendeesAction(concertId: string) {
+  const actor = await requireActor()
+  const res = await evaluateEventMinAttendeesCancellation(actor, concertId)
+  revalidatePath("/promocion")
+  return res
 }
 
 export async function createContractAction(input: unknown) {

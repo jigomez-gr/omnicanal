@@ -86,16 +86,21 @@ export const concerts = pgTable(
   {
     id: id(),
     title: text("title").notNull(),
+    eventKind: text("event_kind").notNull().default("concierto"),
     artistId: text("artist_id")
       .notNull()
       .references(() => artists.id, { onDelete: "cascade" }),
-    venueId: text("venue_id")
-      .notNull()
-      .references(() => venues.id, { onDelete: "cascade" }),
+    venueId: text("venue_id").references(() => venues.id, { onDelete: "set null" }),
     representativeId: text("representative_id").references(() => representatives.id, {
       onDelete: "set null",
     }),
     startsAt: timestamp("starts_at").notNull(),
+    dateAndPlaceTbd: bool("date_and_place_tbd").notNull().default(false),
+    provisionalBookingsOpen: bool("provisional_bookings_open").notNull().default(false),
+    autoNotifyToConfirm: bool("auto_notify_to_confirm").notNull().default(true),
+    cancelIfBelowMinAttendees: bool("cancel_if_below_min_attendees").notNull().default(false),
+    minAttendees: integer("min_attendees").notNull().default(0),
+    currentAttendees: integer("current_attendees").notNull().default(0),
     soundcheckTime: text("soundcheck_time").notNull().default("18:30"),
     doorsTime: text("doors_time").notNull().default("20:30"),
     showTime: text("show_time").notNull().default("21:00"),
@@ -116,6 +121,27 @@ export const concerts = pgTable(
     index("concerts_venue_idx").on(t.venueId),
     index("concerts_starts_at_idx").on(t.startsAt),
   ],
+).enableRLS()
+
+export const eventProvisionalBookings = pgTable(
+  "event_provisional_bookings",
+  {
+    id: id(),
+    concertId: text("concert_id")
+      .notNull()
+      .references(() => concerts.id, { onDelete: "cascade" }),
+    contactId: text("contact_id").references(() => contacts.id, { onDelete: "set null" }),
+    attendeeName: text("attendee_name").notNull(),
+    attendeeEmail: text("attendee_email"),
+    attendeePhone: text("attendee_phone"),
+    seats: integer("seats").notNull().default(1),
+    status: text("status").notNull().default("provisional"),
+    confirmationNoticeSentAt: timestamp("confirmation_notice_sent_at"),
+    confirmedAt: timestamp("confirmed_at"),
+    notes: text("notes"),
+    ...timestamps(),
+  },
+  (t) => [index("event_prov_bookings_concert_idx").on(t.concertId)],
 ).enableRLS()
 
 export const contracts = pgTable(
@@ -151,6 +177,9 @@ export const flamencoMediaAssets = pgTable(
     artistId: text("artist_id").references(() => artists.id, { onDelete: "cascade" }),
     concertId: text("concert_id").references(() => concerts.id, { onDelete: "cascade" }),
     pieceCode: text("piece_code").notNull(),
+    customPieceLabel: text("custom_piece_label"),
+    sourcePlatform: text("source_platform").notNull().default("plataforma"),
+    youtubeVideoId: text("youtube_video_id"),
     title: text("title").notNull(),
     formatLabel: text("format_label").notNull().default("16:9 · MP4"),
     durationSeconds: integer("duration_seconds"),

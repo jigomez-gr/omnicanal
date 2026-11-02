@@ -15,6 +15,7 @@ import {
   contactIdentities,
   contacts,
   contracts,
+  eventProvisionalBookings,
   flamencoMediaAssets,
   paymentRecords,
   paymentSettings,
@@ -31,9 +32,12 @@ import {
 import {
   ARTIST_DIGITAL_PACK_PRESETS,
   buildConcertOfferTexts,
+  extractYouTubeVideoId,
   FLAMENCO_MEDIA_PIECES,
   type ArtistDiscipline,
+  type EventKind,
   type FlamencoMediaPieceCode,
+  type MediaSourcePlatform,
   type VenueKind,
 } from "@/lib/flamenco/catalog"
 import { PERMISSIONS, type Actor } from "@/lib/permissions"
@@ -123,26 +127,59 @@ const createVenueSchema = z.object({
 })
 
 const createConcertSchema = z.object({
-  title: z.string().trim().min(1, "El título del concierto es obligatorio.").max(200),
+  title: z.string().trim().min(1, "El título del concierto o evento es obligatorio.").max(200),
+  eventKind: z
+    .enum([
+      "concierto",
+      "viaje_flamenco",
+      "conferencia",
+      "entrevista_publica",
+      "masterclass_taller",
+      "encuentro_artista",
+      "otro",
+    ])
+    .default("concierto"),
   artistId: z.string().uuid(),
-  venueId: z.string().uuid(),
+  venueId: z.string().uuid().optional().nullable().or(z.literal("")),
   representativeId: z.string().uuid().optional().nullable(),
-  startsAtIso: z.string().min(10),
+  startsAtIso: z.string().optional().nullable(),
+  dateAndPlaceTbd: z.boolean().default(false),
+  provisionalBookingsOpen: z.boolean().default(false),
+  autoNotifyToConfirm: z.boolean().default(true),
+  cancelIfBelowMinAttendees: z.boolean().default(false),
+  minAttendees: z.number().int().min(0).max(100_000).default(0),
+  currentAttendees: z.number().int().min(0).max(100_000).default(0),
   soundcheckTime: z.string().trim().max(20).default("18:30"),
   doorsTime: z.string().trim().max(20).default("20:30"),
   showTime: z.string().trim().max(20).default("21:00"),
-  durationMinutes: z.number().int().min(15).max(360).default(80),
+  durationMinutes: z.number().int().min(15).max(10_080).default(80),
   agreedCacheEur: z.number().int().min(0).max(500_000).default(2200),
-  ticketPriceEur: z.number().int().min(0).max(2000).default(25),
+  ticketPriceEur: z.number().int().min(0).max(5000).default(25),
   bringsGroup: z.boolean().default(true),
   guitaristName: z.string().trim().max(160).optional().nullable(),
   lineupDetails: z.string().trim().max(1000).optional().nullable(),
   status: z
-    .enum(["propuesta", "negociacion", "confirmado", "celebrado", "cancelado"])
+    .enum(["propuesta", "provisional", "negociacion", "confirmado", "celebrado", "cancelado"])
     .default("propuesta"),
   createCalcomMeeting: z.boolean().default(true),
   generateStandardMediaPack: z.boolean().default(true),
   notes: z.string().trim().max(2000).optional().nullable(),
+})
+
+const createProvisionalBookingSchema = z.object({
+  concertId: z.string().uuid(),
+  attendeeName: z.string().trim().min(1, "El nombre es obligatorio.").max(160),
+  attendeeEmail: z.string().trim().email("Correo no válido.").optional().nullable().or(z.literal("")),
+  attendeePhone: z.string().trim().max(40).optional().nullable(),
+  seats: z.number().int().min(1).max(200).default(1),
+  notes: z.string().trim().max(1000).optional().nullable(),
+})
+
+const notifyProvisionalBookingsSchema = z.object({
+  concertId: z.string().uuid(),
+  confirmedStartsAtIso: z.string().optional().nullable(),
+  confirmedVenueId: z.string().uuid().optional().nullable().or(z.literal("")),
+  customMessage: z.string().trim().max(1500).optional().nullable(),
 })
 
 const createContractSchema = z.object({
@@ -167,15 +204,21 @@ const createMediaAssetSchema = z.object({
   artistId: z.string().uuid().optional().nullable(),
   concertId: z.string().uuid().optional().nullable(),
   pieceCode: z.string().trim().min(1).max(80),
+  customPieceLabel: z.string().trim().max(160).optional().nullable(),
+  sourcePlatform: z
+    .enum(["plataforma", "youtube", "vimeo", "instagram", "otro"])
+    .default("plataforma"),
   title: z.string().trim().min(1).max(200),
   formatLabel: z.string().trim().max(80).default("16:9 · MP4"),
   durationSeconds: z.number().int().min(0).max(10_800).optional().nullable(),
   maxSizeMb: z.number().int().min(0).max(2048).optional().nullable(),
   dimensions: z.string().trim().max(40).default("1920x1080"),
-  recommendedUse: z.string().trim().max(500),
+  recommendedUse: z.string().trim().max(500).default(""),
   fileUrl: z.string().trim().min(1).max(500),
   thumbnailUrl: z.string().trim().max(500).optional().nullable(),
-  releasePhase: z.enum(["tres_semanas_antes", "semana_antes", "referencia_web"]).default("referencia_web"),
+  releasePhase: z
+    .enum(["tres_semanas_antes", "semana_antes", "referencia_web", "permanente"])
+    .default("referencia_web"),
 })
 
 const simulateOfferSchema = z.object({
@@ -415,6 +458,7 @@ export async function getFlamencoHubSnapshot(actor: Actor) {
     repRows,
     venueRows,
     concertRows,
+    provisionalBookingRows,
     contractRows,
     mediaRows,
     offerRows,
@@ -424,6 +468,7 @@ export async function getFlamencoHubSnapshot(actor: Actor) {
     db.select().from(representatives).orderBy(desc(representatives.createdAt)),
     db.select().from(venues).orderBy(desc(venues.createdAt)),
     db.select().from(concerts).orderBy(desc(concerts.startsAt)),
+    db.select().from(eventProvisionalBookings).orderBy(desc(eventProvisionalBookings.createdAt)),
     db.select().from(contracts).orderBy(desc(contracts.createdAt)),
     db.select().from(flamencoMediaAssets).orderBy(flamencoMediaAssets.pieceCode),
     db.select().from(concertOffers).orderBy(desc(concertOffers.createdAt)),
@@ -435,6 +480,7 @@ export async function getFlamencoHubSnapshot(actor: Actor) {
     representatives: repRows,
     venues: venueRows,
     concerts: concertRows,
+    provisionalBookings: provisionalBookingRows,
     contracts: contractRows,
     mediaAssets: mediaRows,
     concertOffers: offerRows,
@@ -506,8 +552,14 @@ export async function createFlamencoMediaAsset(actor: Actor, rawInput: unknown) 
   assertCan(actor, PERMISSIONS.campaigns.manage)
   const input = parseInput(createMediaAssetSchema, rawInput)
   if (!input.artistId && !input.concertId) {
-    throw new ValidationError("Indica el intérprete o el concierto al que pertenece la pieza multimedia.")
+    throw new ValidationError("Indica el intérprete o el concierto/evento al que pertenece la pieza multimedia.")
   }
+
+  const detectedYtId = extractYouTubeVideoId(input.fileUrl)
+  const effectivePlatform: MediaSourcePlatform =
+    detectedYtId && input.sourcePlatform === "plataforma"
+      ? "youtube"
+      : (input.sourcePlatform as MediaSourcePlatform)
 
   const [created] = await db
     .insert(flamencoMediaAssets)
@@ -515,6 +567,9 @@ export async function createFlamencoMediaAsset(actor: Actor, rawInput: unknown) 
       artistId: input.artistId || null,
       concertId: input.concertId || null,
       pieceCode: input.pieceCode as FlamencoMediaPieceCode,
+      customPieceLabel: input.customPieceLabel || null,
+      sourcePlatform: effectivePlatform,
+      youtubeVideoId: detectedYtId,
       title: input.title,
       formatLabel: input.formatLabel,
       durationSeconds: input.durationSeconds ?? null,
@@ -522,7 +577,9 @@ export async function createFlamencoMediaAsset(actor: Actor, rawInput: unknown) 
       dimensions: input.dimensions,
       recommendedUse: input.recommendedUse,
       fileUrl: input.fileUrl,
-      thumbnailUrl: input.thumbnailUrl || null,
+      thumbnailUrl:
+        input.thumbnailUrl ||
+        (detectedYtId ? `https://img.youtube.com/vi/${detectedYtId}/hqdefault.jpg` : null),
       releasePhase: input.releasePhase,
     })
     .returning()
@@ -619,10 +676,24 @@ export async function createFlamencoConcert(actor: Actor, rawInput: unknown) {
   const input = parseInput(createConcertSchema, rawInput)
 
   const [artist] = await db.select().from(artists).where(eq(artists.id, input.artistId)).limit(1)
-  const [venue] = await db.select().from(venues).where(eq(venues.id, input.venueId)).limit(1)
-  if (!artist || !venue) {
-    throw new NotFoundError("El intérprete o la sala seleccionada no existen.")
+  if (!artist) {
+    throw new NotFoundError("El intérprete seleccionado no existe.")
   }
+
+  const cleanVenueId = input.venueId?.trim() || null
+  const [venue] = cleanVenueId
+    ? await db.select().from(venues).where(eq(venues.id, cleanVenueId)).limit(1)
+    : [undefined]
+
+  if (!input.dateAndPlaceTbd && !venue) {
+    throw new ValidationError(
+      "Selecciona una sala/lugar, o marca la opción «No se sabe aún la fecha ni el lugar pero se admiten reservas provisionales».",
+    )
+  }
+
+  const resolvedStartDate = input.startsAtIso?.trim()
+    ? new Date(input.startsAtIso)
+    : new Date(Date.now() + 45 * 24 * 60 * 60 * 1000)
 
   let calcomBookingUid: string | null = null
   let calcomMeetingUrl: string | null = null
@@ -634,24 +705,32 @@ export async function createFlamencoConcert(actor: Actor, rawInput: unknown) {
       apiKey,
       baseUrl: calCfg?.baseUrl,
       eventTypeId: calCfg?.defaultEventTypeId || "1",
-      startIso: input.startsAtIso,
-      attendeeName: venue.programmerName || venue.name,
-      attendeeEmail: venue.email || "soniqueteconarte@soniqueteconarte.com",
-      attendeePhone: venue.phone,
-      notes: `Reunión de producción: ${input.title} (${artist.artisticName} en ${venue.name})`,
+      startIso: resolvedStartDate.toISOString(),
+      attendeeName: venue?.programmerName || venue?.name || artist.artisticName,
+      attendeeEmail: venue?.email || artist.email || "soniqueteconarte@soniqueteconarte.com",
+      attendeePhone: venue?.phone || artist.phone,
+      notes: `Reunión de producción (${input.eventKind}): ${input.title} (${artist.artisticName}${venue ? ` en ${venue.name}` : " · Fecha y lugar pendientes"})`,
     })
     calcomBookingUid = bookingRes.uid
     calcomMeetingUrl = bookingRes.meetingUrl
   }
 
+  // Si se activa "si no se llega al número de asistentes se cancela" y el estado era celebrado/confirmado sin llegar al mínimo, lo reflejamos en notas
   const [created] = await db
     .insert(concerts)
     .values({
       title: input.title,
+      eventKind: input.eventKind as EventKind,
       artistId: input.artistId,
-      venueId: input.venueId,
+      venueId: venue?.id ?? null,
       representativeId: input.representativeId || artist.representativeId || null,
-      startsAt: new Date(input.startsAtIso),
+      startsAt: resolvedStartDate,
+      dateAndPlaceTbd: input.dateAndPlaceTbd,
+      provisionalBookingsOpen: input.dateAndPlaceTbd ? true : input.provisionalBookingsOpen,
+      autoNotifyToConfirm: input.autoNotifyToConfirm,
+      cancelIfBelowMinAttendees: input.cancelIfBelowMinAttendees,
+      minAttendees: input.minAttendees,
+      currentAttendees: input.currentAttendees,
       soundcheckTime: input.soundcheckTime,
       doorsTime: input.doorsTime,
       showTime: input.showTime,
@@ -677,6 +756,187 @@ export async function createFlamencoConcert(actor: Actor, rawInput: unknown) {
   }
 
   return created
+}
+
+export async function createEventProvisionalBooking(actor: Actor, rawInput: unknown) {
+  assertCan(actor, PERMISSIONS.campaigns.manage)
+  const input = parseInput(createProvisionalBookingSchema, rawInput)
+
+  const [concert] = await db
+    .select()
+    .from(concerts)
+    .where(eq(concerts.id, input.concertId))
+    .limit(1)
+  if (!concert) throw new NotFoundError("El evento o concierto no existe.")
+
+  const contactId = await upsertAgencyContact({
+    name: input.attendeeName,
+    email: input.attendeeEmail || null,
+    phone: input.attendeePhone || null,
+    tag: "reserva-provisional-evento",
+    notes: `Reserva provisional (${input.seats} plazas) para ${concert.title}`,
+  })
+
+  const [booking] = await db
+    .insert(eventProvisionalBookings)
+    .values({
+      concertId: concert.id,
+      contactId,
+      attendeeName: input.attendeeName,
+      attendeeEmail: input.attendeeEmail || null,
+      attendeePhone: input.attendeePhone || null,
+      seats: input.seats,
+      status: "provisional",
+      notes: input.notes || null,
+    })
+    .returning()
+
+  const nextCount = concert.currentAttendees + input.seats
+  await db
+    .update(concerts)
+    .set({
+      currentAttendees: nextCount,
+      updatedAt: new Date(),
+    })
+    .where(eq(concerts.id, concert.id))
+
+  return { booking, currentAttendees: nextCount }
+}
+
+export async function notifyProvisionalBookingsToConfirm(actor: Actor, rawInput: unknown) {
+  assertCan(actor, PERMISSIONS.campaigns.manage)
+  const input = parseInput(notifyProvisionalBookingsSchema, rawInput)
+
+  const [concert] = await db
+    .select()
+    .from(concerts)
+    .where(eq(concerts.id, input.concertId))
+    .limit(1)
+  if (!concert) throw new NotFoundError("Evento no encontrado.")
+
+  const cleanVenueId = input.confirmedVenueId?.trim() || concert.venueId || null
+  const [venue] = cleanVenueId
+    ? await db.select().from(venues).where(eq(venues.id, cleanVenueId)).limit(1)
+    : [undefined]
+
+  const nextStartsAt = input.confirmedStartsAtIso?.trim()
+    ? new Date(input.confirmedStartsAtIso)
+    : concert.startsAt
+
+  await db
+    .update(concerts)
+    .set({
+      startsAt: nextStartsAt,
+      venueId: venue?.id ?? concert.venueId,
+      dateAndPlaceTbd: false,
+      updatedAt: new Date(),
+    })
+    .where(eq(concerts.id, concert.id))
+
+  const pendingBookings = await db
+    .select()
+    .from(eventProvisionalBookings)
+    .where(eq(eventProvisionalBookings.concertId, concert.id))
+
+  const activeBookings = pendingBookings.filter(
+    (b) => b.status === "provisional" || b.status === "notificado_para_confirmar",
+  )
+
+  const [vapiCfg] = await db.select().from(vapiSettings).limit(1)
+  const smsKey = tryDecryptSecret(vapiCfg?.zadarmaSmsKeyEncrypted) || ""
+  const smsSecret = tryDecryptSecret(vapiCfg?.zadarmaSmsSecretEncrypted) || ""
+
+  const placeLabel = venue ? `${venue.name} (${venue.city})` : "lugar ya confirmado"
+  const dateLabel = nextStartsAt.toLocaleDateString("es-ES")
+
+  let notifiedCount = 0
+  for (const b of activeBookings) {
+    await db
+      .update(eventProvisionalBookings)
+      .set({
+        status: "notificado_para_confirmar",
+        confirmationNoticeSentAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(eventProvisionalBookings.id, b.id))
+
+    if (b.attendeePhone) {
+      const msgText =
+        input.customMessage?.trim() ||
+        `Soniquete con Arte: Ya tenemos fecha (${dateLabel}) y lugar (${placeLabel}) para ${concert.title}. Por favor responde para confirmar tus ${b.seats} plazas provisionales.`
+      const smsOut = await sendZadarmaSms({
+        apiKey: smsKey,
+        apiSecret: smsSecret,
+        toPhone: b.attendeePhone,
+        message: msgText,
+        callerId: vapiCfg?.zadarmaSmsCallerId || "Soniquete",
+      })
+      await db.insert(zadarmaSmsRespuesta).values({
+        toPhone: smsOut.cleanPhone,
+        callerId: vapiCfg?.zadarmaSmsCallerId || "Soniquete",
+        message: smsOut.sanitizedMessage,
+        status: smsOut.status,
+        cost: smsOut.cost ?? null,
+        messagesCount: smsOut.messagesCount ?? 1,
+        rawResponse: smsOut.rawResponse,
+        errorMessage: smsOut.errorMessage ?? null,
+      })
+    }
+    notifiedCount += 1
+  }
+
+  return {
+    notifiedCount,
+    concertId: concert.id,
+    placeLabel,
+    dateLabel,
+  }
+}
+
+export async function confirmEventProvisionalBooking(actor: Actor, bookingId: string) {
+  assertCan(actor, PERMISSIONS.campaigns.manage)
+  const [updated] = await db
+    .update(eventProvisionalBookings)
+    .set({
+      status: "confirmada",
+      confirmedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(eventProvisionalBookings.id, bookingId))
+    .returning()
+
+  if (!updated) throw new NotFoundError("Reserva provisional no encontrada.")
+  return updated
+}
+
+export async function evaluateEventMinAttendeesCancellation(actor: Actor, concertId: string) {
+  assertCan(actor, PERMISSIONS.campaigns.manage)
+  const [concert] = await db.select().from(concerts).where(eq(concerts.id, concertId)).limit(1)
+  if (!concert) throw new NotFoundError("Evento no encontrado.")
+
+  if (concert.cancelIfBelowMinAttendees && concert.currentAttendees < concert.minAttendees) {
+    const [cancelled] = await db
+      .update(concerts)
+      .set({
+        status: "cancelado",
+        notes: `${concert.notes ? `${concert.notes} · ` : ""}Cancelado automáticamente por no alcanzar el aforo mínimo requerido (${concert.currentAttendees}/${concert.minAttendees} asistentes).`,
+        updatedAt: new Date(),
+      })
+      .where(eq(concerts.id, concert.id))
+      .returning()
+
+    return {
+      cancelled: true,
+      concert: cancelled,
+      message: `El evento «${concert.title}» se ha marcado como cancelado porque tiene ${concert.currentAttendees} asistentes de un mínimo exigido de ${concert.minAttendees}.`,
+    }
+  }
+
+  return {
+    cancelled: false,
+    concert,
+    message: `El evento «${concert.title}» alcanza el umbral mínimo (${concert.currentAttendees}/${concert.minAttendees} asistentes) y sigue adelante.`,
+  }
 }
 
 export async function createFlamencoContract(actor: Actor, rawInput: unknown) {

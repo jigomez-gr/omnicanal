@@ -73,10 +73,17 @@ ALTER TABLE "venues" ENABLE ROW LEVEL SECURITY;
 CREATE TABLE "concerts" (
 	"id" text PRIMARY KEY NOT NULL,
 	"title" text NOT NULL,
+	"event_kind" text DEFAULT 'concierto' NOT NULL,
 	"artist_id" text NOT NULL,
-	"venue_id" text NOT NULL,
+	"venue_id" text,
 	"representative_id" text,
 	"starts_at" timestamp with time zone NOT NULL,
+	"date_and_place_tbd" boolean DEFAULT false NOT NULL,
+	"provisional_bookings_open" boolean DEFAULT false NOT NULL,
+	"auto_notify_to_confirm" boolean DEFAULT true NOT NULL,
+	"cancel_if_below_min_attendees" boolean DEFAULT false NOT NULL,
+	"min_attendees" integer DEFAULT 0 NOT NULL,
+	"current_attendees" integer DEFAULT 0 NOT NULL,
 	"soundcheck_time" text DEFAULT '18:30' NOT NULL,
 	"doors_time" text DEFAULT '20:30' NOT NULL,
 	"show_time" text DEFAULT '21:00' NOT NULL,
@@ -95,6 +102,24 @@ CREATE TABLE "concerts" (
 );
 --> statement-breakpoint
 ALTER TABLE "concerts" ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
+CREATE TABLE "event_provisional_bookings" (
+	"id" text PRIMARY KEY NOT NULL,
+	"concert_id" text NOT NULL,
+	"contact_id" text,
+	"attendee_name" text NOT NULL,
+	"attendee_email" text,
+	"attendee_phone" text,
+	"seats" integer DEFAULT 1 NOT NULL,
+	"status" text DEFAULT 'provisional' NOT NULL,
+	"confirmation_notice_sent_at" timestamp with time zone,
+	"confirmed_at" timestamp with time zone,
+	"notes" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+ALTER TABLE "event_provisional_bookings" ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
 CREATE TABLE "contracts" (
 	"id" text PRIMARY KEY NOT NULL,
@@ -122,6 +147,9 @@ CREATE TABLE "flamenco_media_assets" (
 	"artist_id" text,
 	"concert_id" text,
 	"piece_code" text NOT NULL,
+	"custom_piece_label" text,
+	"source_platform" text DEFAULT 'plataforma' NOT NULL,
+	"youtube_video_id" text,
 	"title" text NOT NULL,
 	"format_label" text DEFAULT '16:9 · MP4' NOT NULL,
 	"duration_seconds" integer,
@@ -315,7 +343,13 @@ ALTER TABLE "venues" ADD CONSTRAINT "venues_contact_id_contacts_id_fk" FOREIGN K
 --> statement-breakpoint
 ALTER TABLE "concerts" ADD CONSTRAINT "concerts_artist_id_artists_id_fk" FOREIGN KEY ("artist_id") REFERENCES "public"."artists"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE "concerts" ADD CONSTRAINT "concerts_venue_id_venues_id_fk" FOREIGN KEY ("venue_id") REFERENCES "public"."venues"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "concerts" ADD CONSTRAINT "concerts_venue_id_venues_id_fk" FOREIGN KEY ("venue_id") REFERENCES "public"."venues"("id") ON DELETE set null ON UPDATE no action;
+--> statement-breakpoint
+ALTER TABLE "event_provisional_bookings" ADD CONSTRAINT "event_prov_bookings_concert_id_concerts_id_fk" FOREIGN KEY ("concert_id") REFERENCES "public"."concerts"("id") ON DELETE cascade ON UPDATE no action;
+--> statement-breakpoint
+ALTER TABLE "event_provisional_bookings" ADD CONSTRAINT "event_prov_bookings_contact_id_contacts_id_fk" FOREIGN KEY ("contact_id") REFERENCES "public"."contacts"("id") ON DELETE set null ON UPDATE no action;
+--> statement-breakpoint
+CREATE INDEX "event_prov_bookings_concert_idx" ON "event_provisional_bookings" USING btree ("concert_id");
 --> statement-breakpoint
 ALTER TABLE "concerts" ADD CONSTRAINT "concerts_representative_id_representatives_id_fk" FOREIGN KEY ("representative_id") REFERENCES "public"."representatives"("id") ON DELETE set null ON UPDATE no action;
 --> statement-breakpoint

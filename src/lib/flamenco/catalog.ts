@@ -17,6 +17,22 @@ export type VenueKind =
   | "festival"
   | "centro_cultural"
 
+export type EventKind =
+  | "concierto"
+  | "viaje_flamenco"
+  | "conferencia"
+  | "entrevista_publica"
+  | "masterclass_taller"
+  | "encuentro_artista"
+  | "otro"
+
+export type MediaSourcePlatform =
+  | "plataforma"
+  | "youtube"
+  | "vimeo"
+  | "instagram"
+  | "otro"
+
 export type FlamencoMediaPieceCode =
   | "1_completo_horizontal"
   | "2_promo_horizontal"
@@ -30,6 +46,7 @@ export type FlamencoMediaPieceCode =
   | "portadas_reel_y_post"
   | "miniatura_youtube"
   | "flyers_y_carteleria"
+  | "custom_otro"
 
 export interface FlamencoMediaPieceDefinition {
   code: FlamencoMediaPieceCode
@@ -201,6 +218,33 @@ export const VENUE_KIND_LABELS: Record<VenueKind, string> = {
   teatro: "Teatro / Auditorio",
   festival: "Festival de Flamenco",
   centro_cultural: "Centro Cultural / Club Social",
+}
+
+export const EVENT_KIND_LABELS: Record<EventKind, string> = {
+  concierto: "Concierto / Recital Flamenco",
+  viaje_flamenco: "Viaje Cultural / Ruta Flamenca",
+  conferencia: "Conferencia / Ponencia Ilustrada",
+  entrevista_publica: "Entrevista Pública / Encuentro con Prensa y Público",
+  masterclass_taller: "Masterclass / Taller de Cante, Toque o Baile",
+  encuentro_artista: "Encuentro Íntimo con el Artista / Coloquio",
+  otro: "Otro Evento Especial",
+}
+
+export const MEDIA_SOURCE_PLATFORM_LABELS: Record<MediaSourcePlatform, string> = {
+  plataforma: "Nuestra Plataforma (Archivo directo .MP4 / PDF / Imagen)",
+  youtube: "YouTube (Vídeo / Short / Directo embebido)",
+  vimeo: "Vimeo",
+  instagram: "Instagram / Reel externo",
+  otro: "Otra plataforma externa",
+}
+
+export function extractYouTubeVideoId(url: string | null | undefined): string | null {
+  if (!url) return null
+  const trimmed = url.trim()
+  const match =
+    trimmed.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([A-Za-z0-9_-]{6,15})/) ??
+    null
+  return match?.[1] ?? null
 }
 
 export const CONCERT_STATUS_LABELS: Record<string, string> = {

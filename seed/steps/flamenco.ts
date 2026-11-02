@@ -6,6 +6,7 @@ import {
   concertOffers,
   concerts,
   contracts,
+  eventProvisionalBookings,
   flamencoMediaAssets,
   paymentRecords,
   paymentSettings,
@@ -231,19 +232,27 @@ export const flamencoStep: SeedStep = {
       ])
       .returning()
 
-    // 4. Conciertos
+    // 4. Conciertos y otros Eventos (Viajes Flamencos, Conferencias Ilustradas, Entrevistas Públicas)
     const concertDate1 = new Date(ctx.now.getTime() + 14 * 24 * 60 * 60 * 1000)
     const concertDate2 = new Date(ctx.now.getTime() + 28 * 24 * 60 * 60 * 1000)
+    const conferenceDate3 = new Date(ctx.now.getTime() + 21 * 24 * 60 * 60 * 1000)
 
-    const [conc1, conc2] = await tx
+    const [conc1, conc2, evtViaje3, evtConf4] = await tx
       .insert(concerts)
       .values([
         {
           title: "Noche de Cante y Compás · Carmen «La Trianera» & Diego del Morón",
+          eventKind: "concierto",
           artistId: art1.id,
           venueId: ven3.id,
           representativeId: rep1.id,
           startsAt: concertDate1,
+          dateAndPlaceTbd: false,
+          provisionalBookingsOpen: false,
+          autoNotifyToConfirm: true,
+          cancelIfBelowMinAttendees: true,
+          minAttendees: 80,
+          currentAttendees: 145,
           soundcheckTime: "18:00",
           doorsTime: "19:30",
           showTime: "20:00",
@@ -259,10 +268,17 @@ export const flamencoStep: SeedStep = {
         },
         {
           title: "Gala Flamenca Soniquete · Cuadro Completo en Sala Villanos",
+          eventKind: "concierto",
           artistId: art3.id,
           venueId: ven2.id,
           representativeId: rep2.id,
           startsAt: concertDate2,
+          dateAndPlaceTbd: false,
+          provisionalBookingsOpen: false,
+          autoNotifyToConfirm: true,
+          cancelIfBelowMinAttendees: true,
+          minAttendees: 120,
+          currentAttendees: 95,
           soundcheckTime: "18:30",
           doorsTime: "20:30",
           showTime: "21:00",
@@ -276,10 +292,90 @@ export const flamencoStep: SeedStep = {
           calcomBookingUid: "cal_soniquete_villanos_002",
           calcomMeetingUrl: "https://app.cal.com/video/soniquete-villanos002",
         },
+        {
+          title: "Viaje Cultural Flamenco a Jerez y Triana con Carmen «La Trianera» y Diego del Morón",
+          eventKind: "viaje_flamenco",
+          artistId: art1.id,
+          venueId: null,
+          representativeId: rep1.id,
+          startsAt: new Date(ctx.now.getTime() + 45 * 24 * 60 * 60 * 1000),
+          dateAndPlaceTbd: true,
+          provisionalBookingsOpen: true,
+          autoNotifyToConfirm: true,
+          cancelIfBelowMinAttendees: true,
+          minAttendees: 25,
+          currentAttendees: 16,
+          soundcheckTime: "10:00",
+          doorsTime: "10:30",
+          showTime: "11:00",
+          durationMinutes: 180,
+          agreedCacheEur: 3200,
+          ticketPriceEur: 195,
+          bringsGroup: true,
+          guitaristName: "Diego del Morón",
+          lineupDetails: "Convivencia flamenca, recital privado en peña histórica y ruta guiada por peñas de Jerez y Triana",
+          status: "provisional",
+          notes: "Fecha exacta y punto de salida pendientes de confirmar. Reservas provisionales abiertas con aviso automático al fijar fecha.",
+        },
+        {
+          title: "Conferencia Ilustrada y Entrevista Pública · Los Cantes de Compás por Diego del Morón",
+          eventKind: "conferencia",
+          artistId: art2.id,
+          venueId: ven3.id,
+          representativeId: rep1.id,
+          startsAt: conferenceDate3,
+          dateAndPlaceTbd: false,
+          provisionalBookingsOpen: true,
+          autoNotifyToConfirm: true,
+          cancelIfBelowMinAttendees: true,
+          minAttendees: 40,
+          currentAttendees: 34,
+          soundcheckTime: "18:00",
+          doorsTime: "19:00",
+          showTime: "19:30",
+          durationMinutes: 75,
+          agreedCacheEur: 1400,
+          ticketPriceEur: 15,
+          bringsGroup: false,
+          guitaristName: "Diego del Morón",
+          lineupDetails: "Conferencia con guitarra en directo y entrevista pública con turno de preguntas",
+          status: "confirmado",
+        },
       ])
       .returning()
 
-    // 5. Pack Multimedia de 12 piezas para Intérpretes y Conciertos
+    // 4b. Reservas provisionales para eventos con fecha/lugar por definir (con aviso automático)
+    await tx.insert(eventProvisionalBookings).values([
+      {
+        concertId: evtViaje3.id,
+        attendeeName: "Rocío Benítez (Peña Amigos del Cante)",
+        attendeeEmail: "rocio.benitez@amigosdelcante-demo.es",
+        attendeePhone: "+34 655 123 456",
+        seats: 4,
+        status: "provisional",
+        notes: "Grupo de 4 socios interesados en el viaje flamenco en cuanto se cierre el fin de semana.",
+      },
+      {
+        concertId: evtViaje3.id,
+        attendeeName: "Javier Morales",
+        attendeeEmail: "javier.morales@culturaflamenca-demo.es",
+        attendeePhone: "+34 677 987 654",
+        seats: 2,
+        status: "provisional",
+        notes: "Reserva provisional de 2 plazas pendiente de confirmación de fechas.",
+      },
+      {
+        concertId: evtConf4.id,
+        attendeeName: "Asociación Guitarra Clásica y Flamenca",
+        attendeeEmail: "secretaria@guitarraclasica-demo.es",
+        attendeePhone: "+34 611 445 566",
+        seats: 6,
+        status: "confirmada",
+        confirmedAt: ctx.now,
+      },
+    ])
+
+    // 5. Pack Multimedia de 12 piezas + Vídeos de conciertos en YouTube y piezas personalizadas abiertas
     const allMediaRows = [
       ...buildMediaPackRows({ artistId: art1.id, subjectName: art1.artisticName }),
       ...buildMediaPackRows({ artistId: art2.id, subjectName: art2.artisticName }),
@@ -289,6 +385,57 @@ export const flamencoStep: SeedStep = {
         artistId: art1.id,
         subjectName: conc1.title,
       }),
+      {
+        artistId: art1.id,
+        concertId: conc1.id,
+        pieceCode: "1_completo_horizontal",
+        customPieceLabel: null,
+        sourcePlatform: "youtube",
+        youtubeVideoId: "M7lc1UVf-VE",
+        title: "Directo en YouTube · Carmen «La Trianera» & Diego del Morón en Ateneo de Madrid (Soleá y Bulerías)",
+        formatLabel: "YouTube HD 16:9 (Directo)",
+        durationSeconds: 540,
+        maxSizeMb: null,
+        dimensions: "1920x1080",
+        recommendedUse: "Vídeo de concierto en directo alojado en YouTube para ver desde la ficha del artista y en el dossier.",
+        fileUrl: "https://www.youtube.com/watch?v=M7lc1UVf-VE",
+        thumbnailUrl: "https://img.youtube.com/vi/M7lc1UVf-VE/hqdefault.jpg",
+        releasePhase: "referencia_web",
+      },
+      {
+        artistId: art1.id,
+        concertId: evtViaje3.id,
+        pieceCode: "custom_otro",
+        customPieceLabel: "Entrevista y Acústico en Radio Clásica + Documental de Ruta",
+        sourcePlatform: "plataforma",
+        youtubeVideoId: null,
+        title: "Pieza Especial · Entrevista Pública y Presentación del Viaje Flamenco",
+        formatLabel: "Formato Libre / Especial",
+        durationSeconds: 320,
+        maxSizeMb: 45,
+        dimensions: "1920x1080",
+        recommendedUse: "Material multimedia abierto adicional fuera de las 12 salidas estándar para prensa, radios y suscriptores.",
+        fileUrl: "https://cdn.soniqueteconarte.com/media/carmen-la-trianera/entrevista-radio-clasica.mp4",
+        thumbnailUrl: "https://cdn.soniqueteconarte.com/media/carmen-la-trianera/thumb-entrevista.jpg",
+        releasePhase: "permanente",
+      },
+      {
+        artistId: art2.id,
+        concertId: evtConf4.id,
+        pieceCode: "custom_otro",
+        customPieceLabel: "Masterclass & Conferencia en YouTube",
+        sourcePlatform: "youtube",
+        youtubeVideoId: "aqz-KE-bpKQ",
+        title: "Conferencia Ilustrada en YouTube · El toque de Diego del Morón",
+        formatLabel: "YouTube 16:9",
+        durationSeconds: 900,
+        maxSizeMb: null,
+        dimensions: "1920x1080",
+        recommendedUse: "Conferencia íntegra en YouTube vinculada a la ficha de Diego del Morón.",
+        fileUrl: "https://www.youtube.com/watch?v=aqz-KE-bpKQ",
+        thumbnailUrl: "https://img.youtube.com/vi/aqz-KE-bpKQ/hqdefault.jpg",
+        releasePhase: "referencia_web",
+      },
     ]
     await tx.insert(flamencoMediaAssets).values(allMediaRows)
 
