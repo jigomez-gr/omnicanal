@@ -280,7 +280,7 @@ export function PromocionClient({
             <h3 className="text-base font-semibold">
               Catálogo de Intérpretes en Promoción ({snapshot.artists.length})
             </h3>
-            <div className="grid gap-4">
+            <div className="grid gap-4 2xl:grid-cols-2">
               {snapshot.artists.map((artist) => {
                 // Conciertos/eventos donde participa este artista
                 const artistConcerts = snapshot.concerts.filter(
@@ -537,7 +537,7 @@ export function PromocionClient({
                     placeholder="Ej. Rocío «La Perla de Lavapiés»"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <div>
                     <Label>Disciplina</Label>
                     <select
@@ -568,7 +568,7 @@ export function PromocionClient({
                     onChange={(e) => setStylesText(e.target.value)}
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <div>
                     <Label>Guitarrista titular habitual</Label>
                     <Input
@@ -602,7 +602,7 @@ export function PromocionClient({
                     onChange={(e) => setGroupFormation(e.target.value)}
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <div>
                     <Label>Correo electrónico</Label>
                     <Input
@@ -785,7 +785,7 @@ export function PromocionClient({
                 ) : null}
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
                 {filteredMediaAssets.map((asset) => (
                   <div
                     key={asset.id}
@@ -981,7 +981,7 @@ export function PromocionClient({
             <h3 className="text-base font-semibold">
               Directorio de Salas de Flamenco, Salas de Conciertos, Ateneos y Administración ({snapshot.venues.length})
             </h3>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
               {snapshot.venues.map((v) => (
                 <div key={v.id} className="rounded-xl border bg-card p-4 shadow-xs">
                   <div className="flex items-start justify-between gap-2">
@@ -1079,7 +1079,7 @@ export function PromocionClient({
                     ))}
                   </select>
                 </div>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                   <div>
                     <Label>Ciudad</Label>
                     <Input
@@ -1112,7 +1112,7 @@ export function PromocionClient({
                     placeholder="Nombre del programador o concejalía"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <div>
                     <Label>Email contratación</Label>
                     <Input
@@ -1561,7 +1561,7 @@ export function PromocionClient({
                       </span>
                     </label>
                     {cancelIfBelowMinAttendees && (
-                      <div className="grid grid-cols-2 gap-2 pt-1">
+                      <div className="grid grid-cols-1 gap-2 pt-1 sm:grid-cols-2">
                         <div>
                           <Label className="text-xs">Mínimo requerido</Label>
                           <Input
@@ -1582,7 +1582,7 @@ export function PromocionClient({
                     )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <div>
                       <Label>Caché / Presupuesto (€)</Label>
                       <Input
@@ -1646,8 +1646,8 @@ export function PromocionClient({
                       ))}
                     </select>
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="col-span-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    <div className="sm:col-span-2">
                       <Label>Nombre del interesado *</Label>
                       <Input
                         required
@@ -1666,7 +1666,7 @@ export function PromocionClient({
                       />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <div>
                       <Label>Email (para aviso)</Label>
                       <Input
@@ -1716,7 +1716,7 @@ export function PromocionClient({
                     })
                   }}
                 >
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <div>
                       <Label>Código contrato</Label>
                       <Input
@@ -1815,7 +1815,7 @@ export function PromocionClient({
                   onChange={(e) => setOfferTitle(e.target.value)}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <div>
                   <Label>Intérprete a promocionar</Label>
                   <select
@@ -1860,7 +1860,7 @@ export function PromocionClient({
                   ))}
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <div>
                   <Label>Fechas propuestas</Label>
                   <Input
@@ -2016,7 +2016,7 @@ export function PromocionClient({
                   placeholder="https://www.ateneodemadrid.com o https://webdelartista.com"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <div>
                   <Label>Nombre (opcional, se detecta de la web)</Label>
                   <Input

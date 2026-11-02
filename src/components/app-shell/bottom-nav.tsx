@@ -11,6 +11,7 @@ import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTi
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   ACCOUNT_HREF,
+  AGENCY_SECTIONS,
   HELP_HREF,
   hidesBottomNav,
   isActivePath,
@@ -43,8 +44,10 @@ export function BottomNav({ user, sectionKeys }: BottomNavProps) {
   if (hidesBottomNav(pathname)) return null;
 
   const { primary, more } = splitMobileSections(SECTIONS.filter((section) => sectionKeys.includes(section.key)));
+  const showAgencyModules = sectionKeys.includes("envios");
   const moreActive =
     more.some((section) => isActivePath(pathname, section.href)) ||
+    (showAgencyModules && AGENCY_SECTIONS.some((section) => isActivePath(pathname, section.href))) ||
     isActivePath(pathname, ACCOUNT_HREF) ||
     isActivePath(pathname, HELP_HREF);
 
@@ -120,6 +123,29 @@ export function BottomNav({ user, sectionKeys }: BottomNavProps) {
                     </li>
                   );
                 })}
+                {showAgencyModules
+                  ? AGENCY_SECTIONS.map((agencyItem) => {
+                      const active = isActivePath(pathname, agencyItem.href);
+                      const Icon = agencyItem.icon;
+                      return (
+                        <li key={agencyItem.key}>
+                          <SheetClose asChild>
+                            <Link
+                              href={agencyItem.href}
+                              aria-current={active ? "page" : undefined}
+                              className={cn(
+                                "flex min-h-12 items-center gap-3 rounded-md px-3 text-base hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none [&_svg]:size-5",
+                                active && "bg-muted font-medium [&_svg]:text-primary-text",
+                              )}
+                            >
+                              <Icon aria-hidden />
+                              {agencyItem.label}
+                            </Link>
+                          </SheetClose>
+                        </li>
+                      );
+                    })
+                  : null}
               </ul>
             ) : null}
             <div className="flex flex-col gap-3 border-t p-4">

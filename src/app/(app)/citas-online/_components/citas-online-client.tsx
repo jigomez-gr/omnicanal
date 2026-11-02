@@ -173,7 +173,7 @@ export function CitasOnlineClient({
                 Aún no hay reuniones online con enlace de Cal.com. Crea una desde el formulario de la derecha.
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="grid gap-3 2xl:grid-cols-2">
                 {meetingsWithCalcom.map((m) => {
                   const artist = hub.artists.find((a) => a.id === m.artistId)
                   const venue = hub.venues.find((v) => v.id === m.venueId)
@@ -218,7 +218,7 @@ export function CitasOnlineClient({
                               <span className="block text-xs font-semibold text-indigo-950 dark:text-indigo-200">
                                 Reunión Virtual Cal.com
                               </span>
-                              <span className="font-mono text-[11px] text-indigo-700 dark:text-indigo-300">
+                              <span className="break-all font-mono text-[11px] text-indigo-700 dark:text-indigo-300">
                                 {m.calcomMeetingUrl}
                               </span>
                             </div>
@@ -297,7 +297,7 @@ export function CitasOnlineClient({
                   <Label className="mb-1.5 block text-xs font-semibold">
                     Modalidad de la Cita *
                   </Label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     <button
                       type="button"
                       onClick={() => setModality("in_person")}
@@ -379,7 +379,7 @@ export function CitasOnlineClient({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <Label>Fecha y Hora *</Label>
                     <Input

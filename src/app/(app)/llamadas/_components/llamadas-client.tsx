@@ -179,7 +179,7 @@ export function LlamadasClient({
               </div>
             )}
 
-            <div className="space-y-2">
+            <div className="grid gap-2 2xl:grid-cols-2">
               {data.calls.map((c) => {
                 const isSelected = selectedCall?.id === c.id
                 return (
@@ -306,7 +306,7 @@ export function LlamadasClient({
               })}
             </div>
 
-            <div className="grid grid-cols-2 gap-3 pt-2">
+            <div className="grid grid-cols-1 gap-3 pt-2 sm:grid-cols-2">
               <div>
                 <Label>Transcriptor STT</Label>
                 <Input

@@ -48,7 +48,7 @@ export function HeaderActions({ date, testBookings }: HeaderActionsProps) {
           {words.newBooking}
         </Button>
       ) : null}
-      <Button asChild variant="outline">
+      <Button asChild variant="outline" className="max-sm:hidden">
         <Link href="/citas-online">
           <Video aria-hidden />
           Citas Online (Cal.com)
@@ -56,39 +56,43 @@ export function HeaderActions({ date, testBookings }: HeaderActionsProps) {
       </Button>
       {abilities.block ? <BlockSlotDialog date={date} open={blockOpen} onOpenChange={setBlockOpen} /> : null}
       {hasTests ? <TestBookingsDialog {...testBookings} open={testsOpen} onOpenChange={setTestsOpen} /> : null}
-      {hasSettings || hasTests ? (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            {/* Without the configuration, the menu only has what a phone moves into it. */}
-            <Button variant="ghost" size="icon" aria-label="Más acciones" className={hasSettings ? undefined : "md:hidden"}>
-              <Ellipsis aria-hidden />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {abilities.block ? (
-              <DropdownMenuItem className="md:hidden" onSelect={() => setBlockOpen(true)}>
-                <Ban aria-hidden />
-                Bloquear hueco
-              </DropdownMenuItem>
-            ) : null}
-            {hasTests ? (
-              <DropdownMenuItem className="md:hidden" onSelect={() => setTestsOpen(true)}>
-                <FlaskConical aria-hidden />
-                {words.Bookings} de prueba ({testBookings.count})
-              </DropdownMenuItem>
-            ) : null}
-            {hasSettings ? (
-              <DropdownMenuItem asChild>
-                {/* The supervisor only manages absences there: the configuration opens on the resources ([PER-01]). */}
-                <Link href={AGENDA_SETTINGS_PATH}>
-                  <Settings2 aria-hidden />
-                  {abilities.configure ? "Configurar la agenda" : `Ausencias de los ${words.resources}`}
-                </Link>
-              </DropdownMenuItem>
-            ) : null}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ) : null}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          {/* Without the configuration, the menu only has what a phone moves into it. */}
+          <Button variant="ghost" size="icon" aria-label="Más acciones" className={hasSettings ? undefined : "md:hidden"}>
+            <Ellipsis aria-hidden />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem asChild className="sm:hidden">
+            <Link href="/citas-online">
+              <Video aria-hidden />
+              Citas Online (Cal.com)
+            </Link>
+          </DropdownMenuItem>
+          {abilities.block ? (
+            <DropdownMenuItem className="md:hidden" onSelect={() => setBlockOpen(true)}>
+              <Ban aria-hidden />
+              Bloquear hueco
+            </DropdownMenuItem>
+          ) : null}
+          {hasTests ? (
+            <DropdownMenuItem className="md:hidden" onSelect={() => setTestsOpen(true)}>
+              <FlaskConical aria-hidden />
+              {words.Bookings} de prueba ({testBookings.count})
+            </DropdownMenuItem>
+          ) : null}
+          {hasSettings ? (
+            <DropdownMenuItem asChild>
+              {/* The supervisor only manages absences there: the configuration opens on the resources ([PER-01]). */}
+              <Link href={AGENDA_SETTINGS_PATH}>
+                <Settings2 aria-hidden />
+                {abilities.configure ? "Configurar la agenda" : `Ausencias de los ${words.resources}`}
+              </Link>
+            </DropdownMenuItem>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </>
   );
 }
