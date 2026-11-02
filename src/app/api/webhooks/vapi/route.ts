@@ -131,7 +131,7 @@ export async function POST(request: Request) {
         })
       } else if (fnName === "reservar_cita") {
         const nombre = String(args.nombre || "Programador")
-        const email = String(args.email || "soniqueteconarte@soniqueteconarte.com")
+        const email = String(args.email || "soniqueteflamenco@soniqueteflamenco.com")
         const telefono = String(args.telefono || msg?.call?.customer?.number || "")
         const fechaIso = String(
           args.fecha_hora_iso || new Date(Date.now() + 86400_000).toISOString(),

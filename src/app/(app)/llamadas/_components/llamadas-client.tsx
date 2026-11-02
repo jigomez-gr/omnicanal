@@ -604,7 +604,7 @@ export function LlamadasClient({
                   <Input
                     value={n8nSmsWebhookUrl}
                     onChange={(e) => setN8nSmsWebhookUrl(e.target.value)}
-                    placeholder="https://n8n.soniqueteconarte.com/webhook/zadarma-sms"
+                    placeholder="https://n8n.soniqueteflamenco.com/webhook/zadarma-sms"
                   />
                 </div>
                 <div className="grid gap-3 md:grid-cols-3">

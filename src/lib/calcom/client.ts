@@ -82,7 +82,7 @@ export async function createCalcomBooking(
     eventTypeId: eventTypeNum,
     attendee: {
       name: input.attendeeName || "Programador / Artista",
-      email: input.attendeeEmail || "soniqueteconarte@soniqueteconarte.com",
+      email: input.attendeeEmail || "soniqueteflamenco@soniqueteflamenco.com",
       timeZone: input.timeZone || "Europe/Madrid",
       language: "es",
     },

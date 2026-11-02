@@ -11,7 +11,7 @@ export default function PaymentCancelledPage() {
         </div>
         <h1 className="text-xl font-bold">Pago cancelado o aplazado</h1>
         <p className="text-sm text-muted-foreground">
-          No se ha realizado ningún cargo. Puedes retomar el enlace de pago en cualquier momento o contactar con Soniquete con Arte (soniqueteconarte@soniqueteconarte.com).
+          No se ha realizado ningún cargo. Puedes retomar el enlace de pago en cualquier momento o contactar con Soniquete con Arte (soniqueteflamenco@soniqueteflamenco.com).
         </p>
         <div className="flex justify-center gap-3 pt-2">
           <Button asChild>

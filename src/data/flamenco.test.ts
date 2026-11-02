@@ -57,7 +57,7 @@ describe("Agencia de Promoción Flamenca, Cal.com, Stripe y VAPI/Zadarma", () =>
       baseCacheEur: 2500,
       minCacheEur: 1800,
       city: "Sevilla",
-      email: "estrella@soniqueteconarte.com",
+      email: "estrella@soniqueteflamenco.com",
       phone: "+34699112233",
       generateStandardMediaPack: true,
     })
@@ -159,7 +159,7 @@ describe("Agencia de Promoción Flamenca, Cal.com, Stripe y VAPI/Zadarma", () =>
     const digitalPack = await createArtistDigitalService(owner.actor, {
       artistId: scrapedArtist.entityId,
       packName: "Pack Estrella Flamenca 360º",
-      landingDomain: "macarena.soniqueteconarte.com",
+      landingDomain: "macarena.soniqueteflamenco.com",
       includesLanding: true,
       includesAiAgent: true,
       includesWhatsappChannel: true,
@@ -170,7 +170,7 @@ describe("Agencia de Promoción Flamenca, Cal.com, Stripe y VAPI/Zadarma", () =>
       setupFeeEur: 950,
       monthlyFeeEur: 190,
     })
-    expect(digitalPack.telegramBotUsername).toBe("@soniqueteconarteflamencoMadrid")
+    expect(digitalPack.telegramBotUsername).toBe("@soniqueteflamencoMadrid")
   })
 
   it("[CAL-01] [PAG-01] [VAP-01] cifra secretos con APP_ENCRYPTION_KEY y nunca los devuelve en claro", async () => {
@@ -221,7 +221,7 @@ describe("Agencia de Promoción Flamenca, Cal.com, Stripe y VAPI/Zadarma", () =>
 
   it("[VAP-03] verifica firma Zadarma HMAC-SHA1, sanitización de SMS en España y firma Stripe Webhook", async () => {
     const sanitized = sanitizeZadarmaSmsMessage(
-      "Hola! Tu reunión está en https://app.cal.com/video/abc y en soniqueteconarte.com",
+      "Hola! Tu reunión está en https://app.cal.com/video/abc y en soniqueteflamenco.com",
     )
     expect(sanitized).not.toContain("https://")
     expect(sanitized).not.toContain(".com")
@@ -258,7 +258,7 @@ describe("Agencia de Promoción Flamenca, Cal.com, Stripe y VAPI/Zadarma", () =>
 
     const smsRes = await sendZadarmaSmsFromDashboard(owner.actor, {
       toPhone: "611223344",
-      message: "Reserva confirmada en https://soniqueteconarte.com",
+      message: "Reserva confirmada en https://soniqueteflamenco.com",
     })
     expect(smsRes.log.toPhone).toBe("34611223344")
     expect(smsRes.log.message).not.toContain("https://")
@@ -354,7 +354,7 @@ describe("Agencia de Promoción Flamenca, Cal.com, Stripe y VAPI/Zadarma", () =>
       customPieceLabel: "Podcast y Entrevista Acústica en Radio Clásica",
       sourcePlatform: "plataforma",
       title: "Entrevista Pública y Toque en Directo",
-      fileUrl: "https://cdn.soniqueteconarte.com/media/paco/entrevista-radio.mp4",
+      fileUrl: "https://cdn.soniqueteflamenco.com/media/paco/entrevista-radio.mp4",
       durationSeconds: 600,
       releasePhase: "permanente",
     })

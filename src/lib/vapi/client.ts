@@ -42,7 +42,7 @@ export function composeFlamencoVapiPrompt(params: {
     params.artistsSummary ||
     "- Carmen «La Trianera» (Cante, solista o con su cuadro y el guitarrista Diego del Morón)\n- Diego del Morón (Toque de concierto y acompañamiento)\n- Cuadro Flamenco Soniquete de Madrid (Cante, baile, toque y percusión para tablaos, ateneos y festivales)"
 
-  return `Eres Lucía, coordinadora de contratación y promoción artística de ${agency} (soniqueteconarte.com).
+  return `Eres Lucía, coordinadora de contratación y promoción artística de ${agency} (soniqueteflamenco.com).
 Atiendes llamadas telefónicas entrantes y salientes a través de nuestra línea IP de Zadarma conectada con VAPI.
 
 QUIÉNES SOMOS:

@@ -178,7 +178,7 @@ export function PromocionClient({
   // Estados Servicios Digitales para Artistas
   const [serviceArtistId, setServiceArtistId] = useState(snapshot.artists[0]?.id ?? "")
   const [servicePresetIdx, setServicePresetIdx] = useState(0)
-  const [serviceDomain, setServiceDomain] = useState("carmenlatrianera.soniqueteconarte.com")
+  const [serviceDomain, setServiceDomain] = useState("carmenlatrianera.soniqueteflamenco.com")
 
   // Estados Representante
   const [repName, setRepName] = useState("")
@@ -201,8 +201,8 @@ export function PromocionClient({
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <Badge variant="default">Soniquete con Arte · Promoción Flamenca</Badge>
-              <Badge variant="outline">soniqueteconarte.com</Badge>
-              <Badge variant="secondary">@soniqueteconarteflamencoMadrid</Badge>
+              <Badge variant="outline">soniqueteflamenco.com</Badge>
+              <Badge variant="secondary">@soniqueteflamencoMadrid</Badge>
             </div>
             <h2 className="text-lg font-semibold">
               Centro Integral de Promoción de Intérpretes, Conciertos, Viajes, Conferencias, Entrevistas y Salas
@@ -879,7 +879,7 @@ export function PromocionClient({
                           "Vídeo de concierto / entrevista / contenido especial para web y redes.",
                         fileUrl:
                           pieceUrl ||
-                          `https://cdn.soniqueteconarte.com/media/custom/${pieceCode}.mp4`,
+                          `https://cdn.soniqueteflamenco.com/media/custom/${pieceCode}.mp4`,
                         releasePhase: pieceMeta?.releasePhase ?? "referencia_web",
                       })
                       setPieceUrl("")
@@ -1947,7 +1947,7 @@ export function PromocionClient({
                   </div>
                   <div className="rounded-lg border bg-muted/30 p-3">
                     <div className="mb-1 text-xs font-semibold text-sky-700 dark:text-sky-400">
-                      Vista previa Correo y Bot Telegram (@soniqueteconarteflamencoMadrid):
+                      Vista previa Correo y Bot Telegram (@soniqueteflamencoMadrid):
                     </div>
                     <div className="mb-1 text-xs font-medium">{off.emailSubject}</div>
                     <pre className="whitespace-pre-wrap font-sans text-xs">
@@ -2117,7 +2117,7 @@ export function PromocionClient({
                         </h4>
                         <p className="text-xs text-muted-foreground">
                           Alta: {srv.setupFeeEur} € + {srv.monthlyFeeEur} €/mes · Dominio:{" "}
-                          <strong>{srv.landingDomain || "soniqueteconarte.com"}</strong>
+                          <strong>{srv.landingDomain || "soniqueteflamenco.com"}</strong>
                         </p>
                       </div>
                       <Badge>{srv.status}</Badge>

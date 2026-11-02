@@ -356,14 +356,14 @@ export async function generateStandardMediaPackForTarget(params: {
     maxSizeMb: piece.maxSizeMb,
     dimensions: piece.dimensions,
     recommendedUse: piece.recommendedUse,
-    fileUrl: `https://cdn.soniqueteconarte.com/media/${slug}/${piece.code}.${
+    fileUrl: `https://cdn.soniqueteflamenco.com/media/${slug}/${piece.code}.${
       piece.code.startsWith("portadas") || piece.code.startsWith("miniatura")
         ? "jpg"
         : piece.code.startsWith("flyers")
           ? "pdf"
           : "mp4"
     }`,
-    thumbnailUrl: `https://cdn.soniqueteconarte.com/media/${slug}/thumb-${piece.code}.jpg`,
+    thumbnailUrl: `https://cdn.soniqueteflamenco.com/media/${slug}/thumb-${piece.code}.jpg`,
     releasePhase: piece.releasePhase,
   }))
 
@@ -707,7 +707,7 @@ export async function createFlamencoConcert(actor: Actor, rawInput: unknown) {
       eventTypeId: calCfg?.defaultEventTypeId || "1",
       startIso: resolvedStartDate.toISOString(),
       attendeeName: venue?.programmerName || venue?.name || artist.artisticName,
-      attendeeEmail: venue?.email || artist.email || "soniqueteconarte@soniqueteconarte.com",
+      attendeeEmail: venue?.email || artist.email || "soniqueteflamenco@soniqueteflamenco.com",
       attendeePhone: venue?.phone || artist.phone,
       notes: `Reunión de producción (${input.eventKind}): ${input.title} (${artist.artisticName}${venue ? ` en ${venue.name}` : " · Fecha y lugar pendientes"})`,
     })
@@ -1040,19 +1040,19 @@ export async function simulateAndScheduleConcertOffer(actor: Actor, rawInput: un
     proposedCacheEur: input.proposedCacheEur,
     video1FullUrl: pickUrl(
       "1_completo_horizontal",
-      `https://cdn.soniqueteconarte.com/media/${slug}/1_completo_horizontal.mp4`,
+      `https://cdn.soniqueteflamenco.com/media/${slug}/1_completo_horizontal.mp4`,
     ),
     video2PromoUrl: pickUrl(
       "2_promo_horizontal",
-      `https://cdn.soniqueteconarte.com/media/${slug}/2_promo_horizontal.mp4`,
+      `https://cdn.soniqueteflamenco.com/media/${slug}/2_promo_horizontal.mp4`,
     ),
     video4WhatsappUrl: pickUrl(
       "4_promo_whatsapp_horizontal",
-      `https://cdn.soniqueteconarte.com/media/${slug}/4_promo_whatsapp_horizontal.mp4`,
+      `https://cdn.soniqueteflamenco.com/media/${slug}/4_promo_whatsapp_horizontal.mp4`,
     ),
     video7ReelUrl: pickUrl(
       "7_reel_instagram",
-      `https://cdn.soniqueteconarte.com/media/${slug}/7_reel_instagram.mp4`,
+      `https://cdn.soniqueteflamenco.com/media/${slug}/7_reel_instagram.mp4`,
     ),
   })
 
@@ -1176,7 +1176,7 @@ function inferEntityFromUrl(rawUrl: string) {
   if (!/^https?:\/\//i.test(normalizedUrl)) {
     normalizedUrl = `https://${normalizedUrl}`
   }
-  let hostname = "soniqueteconarte.com"
+  let hostname = "soniqueteflamenco.com"
   try {
     hostname = new URL(normalizedUrl).hostname.replace(/^www\./i, "")
   } catch {
@@ -1211,7 +1211,7 @@ export async function scrapeWebEntityForFlamenco(actor: Actor, rawInput: unknown
     const res = await fetch(inferred.normalizedUrl, {
       signal: controller.signal,
       headers: {
-        "User-Agent": "SoniqueteConArteBot/1.0 (+https://soniqueteconarte.com)",
+        "User-Agent": "SoniqueteFlamencoBot/1.0 (+https://soniqueteflamenco.com)",
       },
     })
     clearTimeout(timer)
@@ -1373,7 +1373,7 @@ export async function createArtistDigitalService(actor: Actor, rawInput: unknown
       includesAiAgent: input.includesAiAgent,
       includesWhatsappChannel: input.includesWhatsappChannel,
       includesTelegramBot: input.includesTelegramBot,
-      telegramBotUsername: input.includesTelegramBot ? "@soniqueteconarteflamencoMadrid" : null,
+      telegramBotUsername: input.includesTelegramBot ? "@soniqueteflamencoMadrid" : null,
       includesInstagramSetup: input.includesInstagramSetup,
       includesYoutubeChannel: input.includesYoutubeChannel,
       includesNineVideosPack: input.includesNineVideosPack,
@@ -1689,7 +1689,7 @@ export async function getVapiAndCallsDashboard(actor: Actor) {
       temperature: cfg?.temperature || "0.3",
       systemPrompt: cfg?.systemPrompt || defaultPrompt,
       n8nSmsWebhookUrl:
-        cfg?.n8nSmsWebhookUrl || "https://n8n.soniqueteconarte.com/webhook/zadarma-sms",
+        cfg?.n8nSmsWebhookUrl || "https://n8n.soniqueteflamenco.com/webhook/zadarma-sms",
       hasZadarmaSmsKey: Boolean(smsKey),
       maskedZadarmaSmsKey: smsKey ? maskSecret(smsKey) : null,
       hasZadarmaSmsSecret: Boolean(smsSecret),

@@ -30,5 +30,5 @@ ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000
 COPY --from=build --chown=node:node /app /app
 USER node
 EXPOSE 3000
-# The web server; docker-compose.yml gives `migrate` and `worker` their own command.
-CMD ["node_modules/.bin/next", "start", "--hostname", "0.0.0.0", "--port", "3000"]
+# The web server; runs pending DB migrations first (idempotent) so Dokploy Application deployments stay in sync.
+CMD ["sh", "-c", "node_modules/.bin/tsx --conditions=react-server scripts/migrate.ts && exec node_modules/.bin/next start --hostname 0.0.0.0 --port 3000"]

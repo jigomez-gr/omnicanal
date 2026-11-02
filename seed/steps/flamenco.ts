@@ -44,14 +44,14 @@ function buildMediaPackRows(params: {
     maxSizeMb: piece.maxSizeMb,
     dimensions: piece.dimensions,
     recommendedUse: piece.recommendedUse,
-    fileUrl: `https://cdn.soniqueteconarte.com/media/${slug}/${piece.code}.${
+    fileUrl: `https://cdn.soniqueteflamenco.com/media/${slug}/${piece.code}.${
       piece.code.startsWith("portadas") || piece.code.startsWith("miniatura")
         ? "jpg"
         : piece.code.startsWith("flyers")
           ? "pdf"
           : "mp4"
     }`,
-    thumbnailUrl: `https://cdn.soniqueteconarte.com/media/${slug}/thumb-${piece.code}.jpg`,
+    thumbnailUrl: `https://cdn.soniqueteflamenco.com/media/${slug}/thumb-${piece.code}.jpg`,
     releasePhase: piece.releasePhase,
   }))
 }
@@ -69,8 +69,8 @@ export const flamencoStep: SeedStep = {
           roleKind: "manager",
           commissionPercent: 15,
           phone: "+34 919 931 525",
-          email: "soniqueteconarte@soniqueteconarte.com",
-          websiteUrl: "https://soniqueteconarte.com",
+          email: "soniqueteflamenco@soniqueteflamenco.com",
+          websiteUrl: "https://soniqueteflamenco.com",
           city: "Madrid",
           notes: "Dirección general de contratación para tablaos, teatros, ateneos y ayuntamientos.",
         },
@@ -80,8 +80,8 @@ export const flamencoStep: SeedStep = {
           roleKind: "booking_agent",
           commissionPercent: 12,
           phone: "+34 644 812 900",
-          email: "elena.vargas@soniqueteconarte.com",
-          websiteUrl: "https://soniqueteconarte.com",
+          email: "elena.vargas@soniqueteflamenco.com",
+          websiteUrl: "https://soniqueteflamenco.com",
           city: "Sevilla",
           notes: "Especialista en programación de peñas flamencas, festivales y diputaciones.",
         },
@@ -108,10 +108,10 @@ export const flamencoStep: SeedStep = {
           minCacheEur: 1600,
           city: "Madrid",
           phone: "+34 611 340 901",
-          email: "carmen@soniqueteconarte.com",
-          websiteUrl: "https://soniqueteconarte.com/artistas/carmen-la-trianera",
+          email: "carmen@soniqueteflamenco.com",
+          websiteUrl: "https://soniqueteflamenco.com/artistas/carmen-la-trianera",
           instagramHandle: "@carmenlatrianera.flamenco",
-          youtubeChannelUrl: "https://youtube.com/@soniqueteconarte",
+          youtubeChannelUrl: "https://youtube.com/@soniqueteflamenco",
           technicalRider:
             "2 micrófonos condensador cardioide para cante y guitarra, 2 micros dinámicos para palmas, tarima de baile microfonada de 3x3 m.",
           representativeId: rep1.id,
@@ -131,10 +131,10 @@ export const flamencoStep: SeedStep = {
           minCacheEur: 1200,
           city: "Madrid",
           phone: "+34 622 450 812",
-          email: "diego@soniqueteconarte.com",
-          websiteUrl: "https://soniqueteconarte.com/artistas/diego-del-moron",
+          email: "diego@soniqueteflamenco.com",
+          websiteUrl: "https://soniqueteflamenco.com/artistas/diego-del-moron",
           instagramHandle: "@diegodelmoron.toque",
-          youtubeChannelUrl: "https://youtube.com/@soniqueteconarte",
+          youtubeChannelUrl: "https://youtube.com/@soniqueteflamenco",
           technicalRider: "1 micro de condensador Neumann KM184 + DI activa para apoyo acústico.",
           representativeId: rep1.id,
         },
@@ -154,10 +154,10 @@ export const flamencoStep: SeedStep = {
           minCacheEur: 2800,
           city: "Madrid",
           phone: "+34 919 931 525",
-          email: "soniqueteconarte@soniqueteconarte.com",
-          websiteUrl: "https://soniqueteconarte.com",
-          instagramHandle: "@soniqueteconarte",
-          youtubeChannelUrl: "https://youtube.com/@soniqueteconarte",
+          email: "soniqueteflamenco@soniqueteflamenco.com",
+          websiteUrl: "https://soniqueteflamenco.com",
+          instagramHandle: "@soniqueteflamenco",
+          youtubeChannelUrl: "https://youtube.com/@soniqueteflamenco",
           technicalRider: "Escenario mínimo 6x4 m, suelo de madera sonorizado, 8 canales de PA y 4 monitores.",
           representativeId: rep2.id,
           sourceWebExtracted: true,
@@ -415,8 +415,8 @@ export const flamencoStep: SeedStep = {
         maxSizeMb: 45,
         dimensions: "1920x1080",
         recommendedUse: "Material multimedia abierto adicional fuera de las 12 salidas estándar para prensa, radios y suscriptores.",
-        fileUrl: "https://cdn.soniqueteconarte.com/media/carmen-la-trianera/entrevista-radio-clasica.mp4",
-        thumbnailUrl: "https://cdn.soniqueteconarte.com/media/carmen-la-trianera/thumb-entrevista.jpg",
+        fileUrl: "https://cdn.soniqueteflamenco.com/media/carmen-la-trianera/entrevista-radio-clasica.mp4",
+        thumbnailUrl: "https://cdn.soniqueteflamenco.com/media/carmen-la-trianera/thumb-entrevista.jpg",
         releasePhase: "permanente",
       },
       {
@@ -493,13 +493,13 @@ export const flamencoStep: SeedStep = {
       proposedDateText: "Sábado 14 de Noviembre · 20:30 h",
       proposedCacheEur: 2800,
       video1FullUrl:
-        "https://cdn.soniqueteconarte.com/media/carmen-la-trianera/1_completo_horizontal.mp4",
+        "https://cdn.soniqueteflamenco.com/media/carmen-la-trianera/1_completo_horizontal.mp4",
       video2PromoUrl:
-        "https://cdn.soniqueteconarte.com/media/carmen-la-trianera/2_promo_horizontal.mp4",
+        "https://cdn.soniqueteflamenco.com/media/carmen-la-trianera/2_promo_horizontal.mp4",
       video4WhatsappUrl:
-        "https://cdn.soniqueteconarte.com/media/carmen-la-trianera/4_promo_whatsapp_horizontal.mp4",
+        "https://cdn.soniqueteflamenco.com/media/carmen-la-trianera/4_promo_whatsapp_horizontal.mp4",
       video7ReelUrl:
-        "https://cdn.soniqueteconarte.com/media/carmen-la-trianera/7_reel_instagram.mp4",
+        "https://cdn.soniqueteflamenco.com/media/carmen-la-trianera/7_reel_instagram.mp4",
     })
 
     await tx.insert(concertOffers).values({
@@ -533,11 +533,11 @@ export const flamencoStep: SeedStep = {
         packName: "Pack Estrella Flamenca 360º (Landing + IA + Redes + 9 Vídeos)",
         status: "activo",
         includesLanding: true,
-        landingDomain: "carmenlatrianera.soniqueteconarte.com",
+        landingDomain: "carmenlatrianera.soniqueteflamenco.com",
         includesAiAgent: true,
         includesWhatsappChannel: true,
         includesTelegramBot: true,
-        telegramBotUsername: "@soniqueteconarteflamencoMadrid",
+        telegramBotUsername: "@soniqueteflamencoMadrid",
         includesInstagramSetup: true,
         includesYoutubeChannel: true,
         includesNineVideosPack: true,
@@ -552,7 +552,7 @@ export const flamencoStep: SeedStep = {
         packName: "Pack Presencia Escénica (Landing + Pack 9 Vídeos + WhatsApp)",
         status: "en_produccion",
         includesLanding: true,
-        landingDomain: "diegodelmoron.soniqueteconarte.com",
+        landingDomain: "diegodelmoron.soniqueteflamenco.com",
         includesAiAgent: true,
         includesWhatsappChannel: true,
         includesTelegramBot: false,
@@ -632,7 +632,7 @@ export const flamencoStep: SeedStep = {
       llmModel: "gpt-4o-mini",
       temperature: "0.3",
       systemPrompt: composeFlamencoVapiPrompt({}),
-      n8nSmsWebhookUrl: "https://n8n.soniqueteconarte.com/webhook/zadarma-sms",
+      n8nSmsWebhookUrl: "https://n8n.soniqueteflamenco.com/webhook/zadarma-sms",
       zadarmaSmsCallerId: "Soniquete",
       autoSendBookingSms: true,
     })

@@ -6,7 +6,7 @@ Qué se construye. Sirve para comprobar, sin saber programar, que lo construido 
 del 2026-10-16: demo de fisioterapia, calendario, recordatorios, permisos y envíos): aprobada el 2026-10-16. Ampliación
 de las fases 17 a 19 (encargo del 2026-11-02: Agencia de Promoción de Artistas de Flamenco «Soniquete con Arte», Pack
 Multimedia de 12 piezas, Simulador de Ofertas, Captación Web de Salas y Artistas, Servicios Digitales para Artistas,
-Cal.com, Pasarela de Pagos Stripe/Bizum, Voz Telefónica VAPI + Zadarma SMS y Telegram `@soniqueteconarteflamencoMadrid`):
+Cal.com, Pasarela de Pagos Stripe/Bizum, Voz Telefónica VAPI + Zadarma SMS y Telegram `@soniqueteflamencoMadrid`):
 aprobada el 2026-11-02.
 
 ## Qué problema resuelve y para quién
@@ -2092,7 +2092,7 @@ migraciones solo aditivas, changelog y aviso de versión nueva); respuestas con 
 evaluación; agente de fuera de horario; y servicios con dos recursos.
 
 - [x] Fase 17 · Agencia de Promoción de Artistas de Flamenco («Soniquete con Arte»):
-  - `[FLA-01]` Módulo «Promoción Artística» (`/promocion`) en el menú lateral con gestión integral de la agencia: Intérpretes, Representantes, Salas y Ateneos (incluyendo Salas de conciertos y Administración Pública), Conciertos, Contratos, Simulador de Ofertas a Salas, Captación Web (Salas y Artistas) y Servicios Digitales para Artistas, además de canal de Telegram (`@soniqueteconarteflamencoMadrid`).
+  - `[FLA-01]` Módulo «Promoción Artística» (`/promocion`) en el menú lateral con gestión integral de la agencia: Intérpretes, Representantes, Salas y Ateneos (incluyendo Salas de conciertos y Administración Pública), Conciertos, Contratos, Simulador de Ofertas a Salas, Captación Web (Salas y Artistas) y Servicios Digitales para Artistas, además de canal de Telegram (`@soniqueteflamencoMadrid`).
   - `[FLA-02]` Intérpretes (`artists`): nombre artístico y legal, disciplina (`cante`, `baile`, `toque`, `percusion`, `cuadro`), biografía, estilos/palos habituales, si suele llevar a su propio grupo/cuadro, guitarrista titular y guitarristas alternativos, caché orientativo, necesidades técnicas (*rider*) y enlaces a redes y web.
   - `[FLA-03]` Pack Multimedia (`flamenco_media_assets`) asociado tanto a cada Intérprete como a cada Concierto/Evento: incluye los 12 formatos estándar (los 9 vídeos `.mp4`, `Portadas`, `Miniatura` y `Flyers / Carteles / Dosier PDF`) con la tabla «Para qué sirve cada salida» y la guía de combinación, **y además queda abierto a cualquier otro multimedia adicional** (`customPieceLabel`, vídeos de conciertos en nuestra plataforma o externos vía **YouTube**, entrevistas, audios, galerías o prensa). Al abrir la ficha de un intérprete se ven tanto sus piezas propias como todos los vídeos de sus conciertos/eventos (en la plataforma o en YouTube con reproductor integrado).
   - `[FLA-04]` Representantes (`representatives`): datos de contacto, comisión, teléfono, email, intérpretes representados y vínculo con Contactos.
