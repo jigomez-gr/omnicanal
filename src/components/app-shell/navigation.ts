@@ -10,12 +10,15 @@ import {
   CalendarDays,
   ChartColumn,
   Clock,
+  CreditCard,
   Inbox,
   Info,
   Mail,
   MessageCircle,
   Megaphone,
   MessagesSquare,
+  Music,
+  PhoneCall,
   RadioTower,
   ScrollText,
   Settings,
@@ -322,9 +325,56 @@ export function hidesBottomNav(pathname: string): boolean {
   return /^\/bandeja\/[^/]+/.test(cleanPath(pathname));
 }
 
+export type AgencySectionKey = "promocion" | "llamadas" | "pagos";
+
+export type AgencyNavSection = {
+  key: AgencySectionKey;
+  label: string;
+  href: string;
+  icon: LucideIcon;
+  group: 0;
+  anyOf: readonly Action[];
+};
+
+export const AGENCY_SECTIONS: readonly AgencyNavSection[] = [
+  {
+    key: "promocion",
+    label: "Promoción Artística",
+    href: "/promocion",
+    icon: Music,
+    group: 0,
+    anyOf: [PERMISSIONS.campaigns.view],
+  },
+  {
+    key: "llamadas",
+    label: "Llamadas y SMS",
+    href: "/llamadas",
+    icon: PhoneCall,
+    group: 0,
+    anyOf: [PERMISSIONS.campaigns.view],
+  },
+  {
+    key: "pagos",
+    label: "Pagos (Stripe/Bizum)",
+    href: "/pagos",
+    icon: CreditCard,
+    group: 0,
+    anyOf: [PERMISSIONS.campaigns.view],
+  },
+];
+
 /** Section of a path, for the top bar trail. */
 export function sectionForPath(pathname: string): NavSection | null {
-  return SECTIONS.find((section) => isActivePath(pathname, section.href)) ?? null;
+  const std = SECTIONS.find((section) => isActivePath(pathname, section.href));
+  if (std) return std;
+  const agency = AGENCY_SECTIONS.find((section) => isActivePath(pathname, section.href));
+  if (agency) {
+    return {
+      ...agency,
+      key: "envios",
+    };
+  }
+  return null;
 }
 
 /** Text of the «Sin permiso» screen for a role (DESIGN.md «Estados de pantalla»). */

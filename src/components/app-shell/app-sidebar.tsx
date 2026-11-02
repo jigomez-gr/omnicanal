@@ -20,7 +20,7 @@ import {
 import { BusinessBrand } from "./business-brand";
 import { INBOX_PATH } from "./home-destination";
 import { InboxUnreadBadge, InboxUnreadDescription } from "./inbox-unread";
-import { groupSections, SECTIONS, trailForPath, type SectionKey } from "./navigation";
+import { AGENCY_SECTIONS, groupSections, isActivePath, SECTIONS, trailForPath, type SectionKey } from "./navigation";
 import type { ShellBusiness, ShellUser } from "./types";
 import { UserMenu } from "./user-menu";
 
@@ -37,8 +37,10 @@ const UNREAD_DESCRIPTION_ID = "sidebar-inbox-unread";
 /** Desktop side menu (256 px, folds to icons with Ctrl/Cmd+B): business, sections and the user menu. */
 export function AppSidebar({ business, user, sectionKeys }: AppSidebarProps) {
   const pathname = usePathname();
-  const current = trailForPath(pathname)?.section.key ?? null;
+  const isAgencyRoute = AGENCY_SECTIONS.some((a) => isActivePath(pathname, a.href));
+  const current = isAgencyRoute ? null : (trailForPath(pathname)?.section.key ?? null);
   const groups = groupSections(SECTIONS.filter((section) => sectionKeys.includes(section.key)));
+  const showAgencyModules = sectionKeys.includes("envios");
 
   return (
     <Sidebar
@@ -94,6 +96,27 @@ export function AppSidebar({ business, user, sectionKeys }: AppSidebarProps) {
                         </SidebarMenuItem>
                       );
                     })}
+                    {index === 0 && showAgencyModules
+                      ? AGENCY_SECTIONS.map((agencyItem) => {
+                          const active = isActivePath(pathname, agencyItem.href);
+                          const Icon = agencyItem.icon;
+                          return (
+                            <SidebarMenuItem key={agencyItem.key}>
+                              <SidebarMenuButton
+                                asChild
+                                isActive={active}
+                                tooltip={agencyItem.label}
+                                className="h-9 [&_svg]:size-5 data-[active=true]:[&_svg]:text-primary-text"
+                              >
+                                <Link href={agencyItem.href} aria-current={active ? "page" : undefined}>
+                                  <Icon aria-hidden />
+                                  <span>{agencyItem.label}</span>
+                                </Link>
+                              </SidebarMenuButton>
+                            </SidebarMenuItem>
+                          );
+                        })
+                      : null}
                   </SidebarMenu>
                 </SidebarGroupContent>
               </SidebarGroup>

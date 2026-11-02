@@ -1,8 +1,9 @@
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, CreditCard, Music, PhoneCall } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { groupSettingsPages, visibleSettingsPages } from "@/components/app-shell/navigation";
 import { PageHeader } from "@/components/page-header";
+import { can, PERMISSIONS } from "@/lib/permissions";
 import { requirePageActor } from "@/server/session";
 
 export const metadata: Metadata = { title: "Ajustes" };
@@ -43,6 +44,55 @@ export default async function SettingsIndexPage() {
             })}
           </ul>
         ))}
+        {can(actor, PERMISSIONS.settings.integrations) ? (
+          <div className="divide-y overflow-hidden rounded-xl border">
+            <Link
+              href="/pagos"
+              className="flex min-h-14 items-center gap-3 px-4 py-3 transition-colors hover:bg-accent"
+            >
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                <CreditCard aria-hidden className="size-5" />
+              </span>
+              <span className="grid min-w-0 flex-1 gap-0.5">
+                <span className="text-sm font-medium">Pasarela de Pago (Stripe & Bizum) e Integración Cal.com</span>
+                <span className="text-xs text-muted-foreground">
+                  Claves de Stripe, Bizum, Webhook /api/webhooks/stripe y sincronización de citas virtuales con Cal.com API v2.
+                </span>
+              </span>
+              <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+            </Link>
+            <Link
+              href="/llamadas"
+              className="flex min-h-14 items-center gap-3 px-4 py-3 transition-colors hover:bg-accent"
+            >
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                <PhoneCall aria-hidden className="size-5" />
+              </span>
+              <span className="grid min-w-0 flex-1 gap-0.5">
+                <span className="text-sm font-medium">Voz Telefónica (VAPI & Zadarma) y SMS (n8n)</span>
+                <span className="text-xs text-muted-foreground">
+                  Agente telefónico VAPI, línea SIP de Zadarma, Estudio de Voz ElevenLabs/Deepgram y pasarela de SMS de confirmación.
+                </span>
+              </span>
+              <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+            </Link>
+            <Link
+              href="/promocion"
+              className="flex min-h-14 items-center gap-3 px-4 py-3 transition-colors hover:bg-accent"
+            >
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                <Music aria-hidden className="size-5" />
+              </span>
+              <span className="grid min-w-0 flex-1 gap-0.5">
+                <span className="text-sm font-medium">Promoción Artística · Soniquete con Arte</span>
+                <span className="text-xs text-muted-foreground">
+                  Intérpretes, pack de 9 vídeos .mp4, salas de flamenco, ateneos, conciertos, contratos y simulador de ofertas.
+                </span>
+              </span>
+              <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+            </Link>
+          </div>
+        ) : null}
       </div>
     </>
   );

@@ -71,6 +71,13 @@
       "when": 1792185459039,
       "tag": "0009_campaign_rules",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793613830439,
+      "tag": "0010_flamenco_vapi_calcom_stripe",
+      "breakpoints": true
     }
   ]
 }

@@ -8,9 +8,10 @@ import { businessStep } from "./business";
 import { campaignsStep } from "./campaigns";
 import { channelsStep } from "./channels";
 import { conversationsStep } from "./conversations";
+import { flamencoStep } from "./flamenco";
 import { hoursStep } from "./hours";
 import { knowledgeStep } from "./knowledge";
 import { usersStep } from "./users";
 import { whatsappStep } from "./whatsapp";
 
-export const SEED_STEPS: readonly SeedStep[] = [businessStep, usersStep, hoursStep, agendaStep, agentsStep, channelsStep, whatsappStep, conversationsStep, bookingsStep, campaignsStep, knowledgeStep];
+export const SEED_STEPS: readonly SeedStep[] = [businessStep, usersStep, hoursStep, agendaStep, agentsStep, channelsStep, whatsappStep, conversationsStep, bookingsStep, campaignsStep, knowledgeStep, flamencoStep];

@@ -3,7 +3,11 @@
 Qué se construye. Sirve para comprobar, sin saber programar, que lo construido hace lo que tiene que hacer.
 
 **Estado:** aprobada (2026-09-26, encargo del propietario del proyecto). Ampliación de las fases 11 a 15 (encargo
-del 2026-10-16: demo de fisioterapia, calendario, recordatorios, permisos y envíos): aprobada el 2026-10-16.
+del 2026-10-16: demo de fisioterapia, calendario, recordatorios, permisos y envíos): aprobada el 2026-10-16. Ampliación
+de las fases 17 a 19 (encargo del 2026-11-02: Agencia de Promoción de Artistas de Flamenco «Soniquete con Arte», Pack
+Multimedia de 12 piezas, Simulador de Ofertas, Captación Web de Salas y Artistas, Servicios Digitales para Artistas,
+Cal.com, Pasarela de Pagos Stripe/Bizum, Voz Telefónica VAPI + Zadarma SMS y Telegram `@soniqueteconarteflamencoMadrid`):
+aprobada el 2026-11-02.
 
 ## Qué problema resuelve y para quién
 
@@ -2086,6 +2090,26 @@ construida y probada: el último paso del flujo llama a la API de Dokploy con lo
 Después: publicación en Vercel (con Supabase) con la prueba del número de prueba de Meta; GitHub (versión,
 migraciones solo aditivas, changelog y aviso de versión nueva); respuestas con voz; Google Calendar e iCal;
 evaluación; agente de fuera de horario; y servicios con dos recursos.
+
+- [x] Fase 17 · Agencia de Promoción de Artistas de Flamenco («Soniquete con Arte»):
+  - `[FLA-01]` Módulo «Promoción Artística» (`/promocion`) en el menú lateral con gestión integral de la agencia: Intérpretes, Representantes, Salas y Ateneos (incluyendo Salas de conciertos y Administración Pública), Conciertos, Contratos, Simulador de Ofertas a Salas, Captación Web (Salas y Artistas) y Servicios Digitales para Artistas, además de canal de Telegram (`@soniqueteconarteflamencoMadrid`).
+  - `[FLA-02]` Intérpretes (`artists`): nombre artístico y legal, disciplina (`cante`, `baile`, `toque`, `percusion`, `cuadro`), biografía, estilos/palos habituales, si suele llevar a su propio grupo/cuadro, guitarrista titular y guitarristas alternativos, caché orientativo, necesidades técnicas (*rider*) y enlaces a redes y web.
+  - `[FLA-03]` Pack Multimedia de 12 piezas (`flamenco_media_assets`) asociado tanto a cada Intérprete como a cada Concierto: los 9 formatos de vídeo `.mp4` (`1 · Completo horizontal (1:33)`, `2 · Promo horizontal (1:02)`, `3 · Teaser horizontal (29 s)`, `4 · Promo WhatsApp horizontal (6 MB)`, `5 · Vertical completo (1:33)`, `6 · Vertical WhatsApp (12 MB)`, `7 · Reel Instagram (58 s)`, `8 · Reel horizontal (58 s)` y `9 · Post feed 4:5 (58 s)`), `Portadas` (1080×1920 y 1080×1350), `Miniatura` (1920×1080) y `Flyers / Carteles / Dosier PDF`, con la tabla explicativa de «Para qué sirve cada salida» y la guía de combinación a 3 semanas y 1 semana del evento.
+  - `[FLA-04]` Representantes (`representatives`): datos de contacto, comisión, teléfono, email, intérpretes representados y vínculo con Contactos.
+  - `[FLA-05]` Salas, Ateneos y Administración (`venues`): tipo (`sala_flamenco`, `tablao`, `sala_conciertos`, `administracion`, `ateneo`, `pena_flamenca`, `teatro`, `festival`), ciudad, provincia, aforo, dotación técnica, presupuesto habitual, página web y contacto programador vinculado a `contacts`.
+  - `[FLA-06]` Conciertos (`concerts`) y Contratos (`contracts`): vinculan intérprete, sala, representante, guitarrista/grupo, fecha, hora, caché, estado y su propio pack multimedia de 12 salidas; los contratos guardan importe, tipo, estado (`borrador`, `enviado`, `firmado`, `facturado`, `pagado`) y enlace de cobro con Stripe.
+  - `[FLA-07]` Simulador de Ofertas de Concierto conectado con Envíos (`concert_offers`): genera una oferta personalizada de un concierto para una sala o grupo de salas (con las piezas multimedia adecuadas para WhatsApp, Telegram y Correo) y con un clic crea automáticamente la campaña en el módulo de **Envíos** (`campaigns`).
+  - `[FLA-08]` Captación desde la web de contactos de Salas y de Artistas: extrae de una o varias páginas web de salas o de artistas sus datos (nombre, email, teléfono, ciudad, web) usando el lector seguro de páginas web y crea la ficha en `venues` o `artists` más el contacto en `contacts` con etiqueta (`sala-web` o `artista-web`) para enviarles ofertas.
+  - `[FLA-09]` Servicios Digitales para Artistas (`artist_digital_services`): catálogo y gestión de servicios ofrecidos a los artistas (Landing Page profesional, Agentes de IA, Redes Instagram/TikTok con el pack de 9 vídeos, WhatsApp Business, Canal de YouTube y Bot de Telegram).
+- [x] Fase 18 · Citas Online con Cal.com y Pasarela de Pagos Stripe & Bizum:
+  - `[CAL-01]` Configuración en Ajustes de Cal.com (API Key cifrada con `APP_ENCRYPTION_KEY`, URL Base `https://api.cal.com/v2`, ID de Evento Predeterminado, sincronización automática y prueba de conexión).
+  - `[CAL-02]` Sincronización de citas y reuniones virtuales con Cal.com API v2 generando enlace de videollamada (`meetingUrl`).
+  - `[PAG-01]` Configuración en Ajustes de Pasarela de Pago (Stripe & Bizum): Clave Pública, Clave Secreta cifrada, Secreto de Firma del Webhook cifrado, URL `/api/webhooks/stripe` y activación de Tarjetas/Apple Pay/Google Pay y Bizum.
+  - `[PAG-02]` Sección `/pagos` en el menú lateral con resumen financiero, listado de cobros de citas/conciertos/contratos/servicios a artistas, generación de enlaces de pago Stripe Checkout, registro manual de cobros, páginas `/payment-success` y `/payment-cancelled`, y webhook `/api/webhooks/stripe` que marca como pagado al recibir `checkout.session.completed`.
+- [x] Fase 19 · Voz Telefónica (VAPI & Zadarma) y SMS:
+  - `[VAP-01]` Configuración en Ajustes de Voz Telefónica (VAPI & Zadarma) y SMS (n8n): Clave de API de VAPI cifrada, ID del Asistente, Número Zadarma, URL del Webhook `/api/webhooks/vapi`, Endpoint Outbound `/api/vapi/outbound`, Webhook de salida para SMS (n8n) y credenciales de Zadarma SMS (API Key y Secret cifrados, Remitente `Sender ID`, auto-confirmación por SMS y plantilla).
+  - `[VAP-02]` Sección `/llamadas` en el menú lateral con Pestaña de Registro de Llamadas (estadísticas, reproductor de grabación por proxy seguro `/api/calls/[id]/recording`, transcripción, resumen de IA y llamada saliente de prueba) y Pestaña Estudio de Voz (voz ElevenLabs, transcriptor Deepgram, LLM, prompt de voz, troncal SIP `sip.zadarma.com` y sincronización con VAPI).
+  - `[VAP-03]` Webhook `/api/webhooks/vapi` y envío de SMS por Zadarma (`zadarma_sms_respuesta`) con firma HMAC-SHA1 RFC 3986 y limpieza de enlaces para operadoras españolas.
 
 ## Cómo se comprueba que todo funciona
 

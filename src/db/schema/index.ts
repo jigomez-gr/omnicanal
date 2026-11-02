@@ -13,3 +13,4 @@ export * from "./agenda-prepared";
 export * from "./operations";
 export * from "./assistants";
 export * from "./campaigns";
+export * from "./flamenco";
