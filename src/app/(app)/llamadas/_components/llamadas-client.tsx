@@ -58,7 +58,7 @@ export function LlamadasClient({
   // Estados envío SMS Zadarma directo
   const [smsPhone, setSmsPhone] = useState("+34919933764")
   const [smsText, setSmsText] = useState(
-    "Soniquete con Arte: Confirmada nuestra reunion de contratacion artistica. Te hemos enviado el dossier y videos a tu correo.",
+    "soniqueteflamenco.com: Confirmada nuestra reunion de contratacion artistica. Te hemos enviado el dossier y videos a tu correo.",
   )
 
   // Estados Configuración VAPI & Zadarma (exactamente como en crm_salvadora)
@@ -346,7 +346,7 @@ export function LlamadasClient({
 
           <div className="space-y-3 rounded-xl border bg-card p-5 shadow-xs">
             <h3 className="text-base font-bold">
-              Prompt Telefónico de Soniquete con Arte (Sincronizado con Catálogo de Intérpretes)
+              Prompt Telefónico de soniqueteflamenco.com (Sincronizado con Catálogo de Intérpretes)
             </h3>
             <Textarea
               rows={15}

@@ -14,6 +14,9 @@ import { ensureRetentionJob } from "@/server/compliance/retention";
 import { backfillMessageSearchText } from "@/server/inbound/message-search";
 import { resumePendingEmbeddings } from "@/server/knowledge/maintenance";
 import { safeErrorMessage } from "@/server/redact";
+import { db } from "@/db";
+import { businessSettings } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
 // Shared by every bundle of the process (instrumentation and the routes are built apart).
 const state = globalThis as unknown as { __dominiaStartupMaintenance?: Promise<void> };
@@ -25,6 +28,12 @@ export function runStartupMaintenance(): Promise<void> {
     attempt(() => backfillContactSearchText(), "No se ha podido preparar la búsqueda de contactos sin tildes"),
     attempt(() => backfillMessageSearchText(), "No se ha podido preparar la búsqueda de mensajes sin tildes"),
     attempt(() => ensureRetentionJob(), "No se ha podido programar la limpieza diaria"),
+    attempt(async () => {
+      const [bRow] = await db.select().from(businessSettings).limit(1);
+      if (bRow && (bRow.name.toLowerCase().includes("soniquete con arte") || bRow.name === "Soniquete con Arte · Promoción Flamenca")) {
+        await db.update(businessSettings).set({ name: "soniqueteflamenco.com" }).where(eq(businessSettings.id, bRow.id));
+      }
+    }, "No se ha podido actualizar el nombre del negocio"),
     attempt(async () => {
       if ((await loadReminderConfig()).enabled) await syncBookingReminderJob(true);
     }, "No se han podido programar los recordatorios"),

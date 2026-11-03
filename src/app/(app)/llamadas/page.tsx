@@ -8,7 +8,7 @@ import { requirePageActor } from "@/server/session"
 import { LlamadasClient } from "./_components/llamadas-client"
 
 export const metadata: Metadata = {
-  title: "Llamadas VAPI y SMS Zadarma · Soniquete con Arte",
+  title: "Llamadas VAPI y SMS Zadarma · soniqueteflamenco.com",
 }
 
 export default async function LlamadasPage() {

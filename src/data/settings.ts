@@ -45,11 +45,20 @@ export async function ensureSettingsRows(executor: Executor = db): Promise<void>
 
 /** System: the business settings row (created with defaults if missing). */
 export async function loadBusinessSettings(executor: Executor = db): Promise<BusinessSettings> {
-  const [row] = await executor.select().from(businessSettings).limit(1);
-  if (row) return withRetentionDefaults(row);
-  await ensureSettingsRows(executor);
-  const [created] = await executor.select().from(businessSettings).limit(1);
-  return withRetentionDefaults(created);
+  let [row] = await executor.select().from(businessSettings).limit(1);
+  if (!row) {
+    await ensureSettingsRows(executor);
+    [row] = await executor.select().from(businessSettings).limit(1);
+  }
+  if (row && (row.name.toLowerCase().includes("soniquete con arte") || row.name === "Soniquete con Arte · Promoción Flamenca")) {
+    row = { ...row, name: "soniqueteflamenco.com" };
+    executor
+      .update(businessSettings)
+      .set({ name: "soniqueteflamenco.com" })
+      .where(eq(businessSettings.id, row.id))
+      .catch(() => {});
+  }
+  return withRetentionDefaults(row);
 }
 
 /** A period added after the row was written takes its default ([CUM-05]). */
@@ -59,11 +68,28 @@ function withRetentionDefaults(row: BusinessSettings): BusinessSettings {
 
 /** System: the integration settings row (created if missing). Contains encrypted secrets: never return it. */
 export async function loadIntegrationSettings(executor: Executor = db): Promise<IntegrationSettings> {
-  const [row] = await executor.select().from(integrationSettings).limit(1);
-  if (row) return row;
-  await ensureSettingsRows(executor);
-  const [created] = await executor.select().from(integrationSettings).limit(1);
-  return created;
+  let [row] = await executor.select().from(integrationSettings).limit(1);
+  if (!row) {
+    await ensureSettingsRows(executor);
+    [row] = await executor.select().from(integrationSettings).limit(1);
+  }
+  if (row && (!row.smtp || !row.smtp.host || row.smtp.host.includes("tudominio"))) {
+    const defaultSmtp: SmtpSettings = {
+      host: "smtp.hostinger.com",
+      port: 465,
+      security: "tls",
+      user: "soniqueteflamenco@soniqueteflamenco.com",
+      fromEmail: "soniqueteflamenco@soniqueteflamenco.com",
+      fromName: "soniqueteflamenco.com",
+    };
+    row = { ...row, smtp: defaultSmtp };
+    executor
+      .update(integrationSettings)
+      .set({ smtp: defaultSmtp })
+      .where(eq(integrationSettings.id, row.id))
+      .catch(() => {});
+  }
+  return row;
 }
 
 export type OpenRouterKeySource = "settings" | "env";

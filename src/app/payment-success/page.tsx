@@ -9,7 +9,7 @@ export default function PaymentSuccessPage() {
         <div className="mx-auto flex size-14 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600">
           <CheckCircle2 className="size-8" />
         </div>
-        <h1 className="text-xl font-bold">¡Pago confirmado en Soniquete con Arte!</h1>
+        <h1 className="text-xl font-bold">¡Pago confirmado en soniqueteflamenco.com!</h1>
         <p className="text-sm text-muted-foreground">
           Hemos recibido correctamente el abono de tu reserva / contrato artístico a través de nuestra pasarela segura (Stripe / Bizum). Recibirás el justificante en tu correo electrónico.
         </p>

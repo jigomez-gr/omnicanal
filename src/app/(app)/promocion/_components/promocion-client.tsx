@@ -186,7 +186,7 @@ export function PromocionClient({
 
   // Estados Representante
   const [repName, setRepName] = useState("")
-  const [repAgency, setRepAgency] = useState("Soniquete con Arte Management")
+  const [repAgency, setRepAgency] = useState("soniqueteflamenco.com Management")
   const [repCommission, setRepCommission] = useState("15")
   const [repEmail, setRepEmail] = useState("")
   const [repPhone, setRepPhone] = useState("")
@@ -204,7 +204,7 @@ export function PromocionClient({
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <Badge variant="default">Soniquete con Arte · Promoción Flamenca</Badge>
+              <Badge variant="default">soniqueteflamenco.com · Promoción Flamenca</Badge>
               <Badge variant="outline">soniqueteflamenco.com</Badge>
               <Badge variant="secondary">@soniqueteflamencoMadrid</Badge>
             </div>

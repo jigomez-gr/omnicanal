@@ -8,7 +8,7 @@ import { requirePageActor } from "@/server/session"
 import { PromocionClient } from "./_components/promocion-client"
 
 export const metadata: Metadata = {
-  title: "Promoción Artística · Soniquete con Arte",
+  title: "Promoción Artística · soniqueteflamenco.com",
 }
 
 export default async function PromocionArtisticaPage() {
@@ -23,7 +23,7 @@ export default async function PromocionArtisticaPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Promoción Artística · Soniquete con Arte"
+        title="Promoción Artística · soniqueteflamenco.com"
         description="Intérpretes de flamenco, pack de 9 vídeos .mp4 y cartelería, salas de flamenco, salas de conciertos, ateneos, administración, simulador de ofertas hacia Envíos, captador web y servicios digitales para artistas."
       />
       <PromocionClient snapshot={snapshot} canManage={canManage} />

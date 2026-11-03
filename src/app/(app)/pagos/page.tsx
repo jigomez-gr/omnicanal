@@ -8,7 +8,7 @@ import { requirePageActor } from "@/server/session"
 import { PagosClient } from "./_components/pagos-client"
 
 export const metadata: Metadata = {
-  title: "Pagos (Stripe & Bizum) y Citas Cal.com · Soniquete con Arte",
+  title: "Pagos (Stripe & Bizum) y Citas Cal.com · soniqueteflamenco.com",
 }
 
 export default async function PagosPage() {

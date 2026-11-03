@@ -48,12 +48,12 @@ export async function POST(request: Request) {
   await db.insert(calls).values({
     vapiCallId: result.vapiCallId,
     direction: "outbound",
-    callerName: parsed.name || "Solicitud Web Soniquete con Arte",
+    callerName: parsed.name || "Solicitud Web soniqueteflamenco.com",
     phoneNumber: parsed.phoneNumber,
     status: "completed",
     durationSeconds: 75,
     summary: `Llamada automática solicitada desde web a ${parsed.phoneNumber}.`,
-    transcript: `Lucía (Soniquete con Arte): ¡Hola ${parsed.name || ""}! Te llamo de Soniquete con Arte Promoción Flamenca, como acabas de solicitar en nuestra web.`,
+    transcript: `Lucía (soniqueteflamenco.com): ¡Hola ${parsed.name || ""}! Te llamo de soniqueteflamenco.com Promoción Flamenca, como acabas de solicitar en nuestra web.`,
   })
 
   return NextResponse.json(result)

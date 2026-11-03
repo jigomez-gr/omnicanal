@@ -84,7 +84,7 @@ export default async function SettingsIndexPage() {
                 <Music aria-hidden className="size-5" />
               </span>
               <span className="grid min-w-0 flex-1 gap-0.5">
-                <span className="text-sm font-medium">Promoción Artística · Soniquete con Arte</span>
+                <span className="text-sm font-medium">Promoción Artística · soniqueteflamenco.com</span>
                 <span className="text-xs text-muted-foreground">
                   Intérpretes, pack de 9 vídeos .mp4, salas de flamenco, ateneos, conciertos, contratos y simulador de ofertas.
                 </span>

@@ -87,7 +87,7 @@ export async function createCalcomBooking(
       language: "es",
     },
     bookingFieldsResponses: {
-      notes: input.notes || "Reunión de contratación / producción artística · Soniquete con Arte",
+      notes: input.notes || "Reunión de contratación / producción artística · soniqueteflamenco.com",
       phone: input.attendeePhone || "",
     },
     metadata: {

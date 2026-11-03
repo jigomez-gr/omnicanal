@@ -37,7 +37,7 @@ export function composeFlamencoVapiPrompt(params: {
   artistsSummary?: string
   venuesSummary?: string
 }): string {
-  const agency = params.agencyName || "Soniquete con Arte · Agencia de Promoción Flamenca"
+  const agency = params.agencyName || "soniqueteflamenco.com · Agencia de Promoción Flamenca"
   const artistsBlock =
     params.artistsSummary ||
     "- Carmen «La Trianera» (Cante, solista o con su cuadro y el guitarrista Diego del Morón)\n- Diego del Morón (Toque de concierto y acompañamiento)\n- Cuadro Flamenco Soniquete de Madrid (Cante, baile, toque y percusión para tablaos, ateneos y festivales)"
@@ -151,7 +151,7 @@ export function buildFlamencoVapiTools(webhookUrl: string) {
       function: {
         name: "pasar_a_humano",
         description:
-          "Solicita traspaso prioritario al equipo humano de Soniquete con Arte cuando el cliente pide hablar con dirección o cerrar un contrato especial.",
+          "Solicita traspaso prioritario al equipo humano de soniqueteflamenco.com cuando el cliente pide hablar con dirección o cerrar un contrato especial.",
         parameters: {
           type: "object",
           properties: {
@@ -192,7 +192,7 @@ export async function triggerVapiOutboundCall(params: {
       assistantId: params.assistantId,
       customer: {
         number: cleanPhone,
-        name: params.customerName || "Contacto Soniquete con Arte",
+        name: params.customerName || "Contacto soniqueteflamenco.com",
       },
     }
     if (params.phoneNumberId?.trim()) {

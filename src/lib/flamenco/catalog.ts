@@ -72,7 +72,7 @@ export const FLAMENCO_MEDIA_PIECES: readonly FlamencoMediaPieceDefinition[] = [
     maxSizeMb: null,
     dimensions: "1920×1080",
     recommendedUse:
-      "YouTube, la web de Soniquete con Arte, proyectarlo en el Club Social, Ateneo o en la sala antes del espectáculo. Es la pieza “de referencia”, con todo el mensaje.",
+      "YouTube, la web de soniqueteflamenco.com, proyectarlo en el Club Social, Ateneo o en la sala antes del espectáculo. Es la pieza “de referencia”, con todo el mensaje.",
     releasePhase: "referencia_web",
   },
   {
@@ -338,7 +338,7 @@ export function buildConcertOfferTexts(params: {
     : `Formato solista${params.guitaristName ? ` acompañado a la guitarra por ${params.guitaristName}` : ""}`
 
   const whatsappPreview = [
-    `✨ *PROPUESTA ARTÍSTICA · SONIQUETE CON ARTE* ✨`,
+    `✨ *PROPUESTA ARTÍSTICA · SONIQUETEFLAMENCO.COM* ✨`,
     `Hola equipo de programación de *${params.venueName}* (${params.venueCity}):`,
     ``,
     `Os presentamos la propuesta de concierto de *${params.artistName}* (${params.disciplineLabel}) para vuestra programación:`,
@@ -357,7 +357,7 @@ export function buildConcertOfferTexts(params: {
   ].join("\n")
 
   const telegramPreview = [
-    `🔥 <b>SONIQUETE CON ARTE · OFERTA DE CONCIERTO</b>`,
+    `🔥 <b>SONIQUETEFLAMENCO.COM · OFERTA DE CONCIERTO</b>`,
     `🏛 Destinatario: <b>${params.venueName}</b> (${params.venueCity})`,
     `🎤 Intérprete: <b>${params.artistName}</b> (${params.disciplineLabel})`,
     `🎸 Formación: ${groupLine}`,
@@ -372,7 +372,7 @@ export function buildConcertOfferTexts(params: {
   const emailPreview = [
     `Estimado equipo de programación de ${params.venueName} (${params.venueCity}),`,
     ``,
-    `Desde la agencia Soniquete con Arte · Promoción Flamenca (https://soniqueteflamenco.com) les hacemos llegar el dossier y pack audiovisual del espectáculo de ${params.artistName} (${params.disciplineLabel}).`,
+    `Desde la agencia soniqueteflamenco.com · Promoción Flamenca (https://soniqueteflamenco.com) les hacemos llegar el dossier y pack audiovisual del espectáculo de ${params.artistName} (${params.disciplineLabel}).`,
     ``,
     `FICHA ARTÍSTICA Y TÉCNICA:`,
     `- Repertorio y estilos: ${stylesStr}`,
@@ -389,7 +389,7 @@ export function buildConcertOfferTexts(params: {
     `Quedamos a su entera disposición para agendar una reunión online mediante Cal.com o atenderles en nuestra línea directa.`,
     ``,
     `Un cordial saludo,`,
-    `Dirección de Contratación · Soniquete con Arte`,
+    `Dirección de Contratación · soniqueteflamenco.com`,
     `soniqueteflamenco@soniqueteflamenco.com · https://soniqueteflamenco.com`,
     `Telegram: @soniqueteflamencoMadrid`,
   ].join("\n")

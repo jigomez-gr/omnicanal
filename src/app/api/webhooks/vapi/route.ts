@@ -136,7 +136,7 @@ export async function POST(request: Request) {
         const fechaIso = String(
           args.fecha_hora_iso || new Date(Date.now() + 86400_000).toISOString(),
         )
-        const motivo = String(args.motivo || "Reunión de contratación artística · Soniquete con Arte")
+        const motivo = String(args.motivo || "Reunión de contratación artística · soniqueteflamenco.com")
 
         const [calCfg] = await db.select().from(calcomSettings).limit(1)
         const calKey = tryDecryptSecret(calCfg?.apiKeyEncrypted) || ""
@@ -155,7 +155,7 @@ export async function POST(request: Request) {
         if (telefono && (vapiCfg?.autoSendBookingSms ?? true)) {
           const smsKey = tryDecryptSecret(vapiCfg?.zadarmaSmsKeyEncrypted) || ""
           const smsSecret = tryDecryptSecret(vapiCfg?.zadarmaSmsSecretEncrypted) || ""
-          const smsText = `Soniquete con Arte: Confirmada tu reunion de contratacion flamenca para ${nombre}. Te hemos enviado los detalles e invitacion a tu correo.`
+          const smsText = `soniqueteflamenco.com: Confirmada tu reunion de contratacion flamenca para ${nombre}. Te hemos enviado los detalles e invitacion a tu correo.`
           const smsOut = await sendZadarmaSms({
             apiKey: smsKey,
             apiSecret: smsSecret,
@@ -203,7 +203,7 @@ export async function POST(request: Request) {
     const recordingUrl = msg?.artifact?.recordingUrl || null
     const summary =
       msg?.analysis?.summary ||
-      "Llamada atendida por el agente de voz de Soniquete con Arte."
+      "Llamada atendida por el agente de voz de soniqueteflamenco.com."
     const durationSeconds = Number(msg?.durationSeconds ?? 60)
 
     const existing = await db

@@ -18,6 +18,7 @@ import {
   contracts,
   eventProvisionalBookings,
   flamencoMediaAssets,
+  integrationSettings,
   paymentRecords,
   paymentSettings,
   representatives,
@@ -582,6 +583,22 @@ export async function ensureHostingerMailboxChannel(options?: { plainPassword?: 
 
   if (passwordToSave && channelId) {
     await ensureEmailPolling(channelId)
+    const enc = encryptSecret(passwordToSave)
+    await db
+      .update(integrationSettings)
+      .set({
+        smtpPasswordEnc: enc,
+        smtp: {
+          host: HOSTINGER_MAILBOX_DEFAULTS.smtpHost,
+          port: HOSTINGER_MAILBOX_DEFAULTS.smtpPort,
+          security: HOSTINGER_MAILBOX_DEFAULTS.smtpSecurity,
+          user: HOSTINGER_MAILBOX_DEFAULTS.emailAddress,
+          fromEmail: HOSTINGER_MAILBOX_DEFAULTS.emailAddress,
+          fromName: HOSTINGER_MAILBOX_DEFAULTS.domain,
+        },
+      })
+      .where(eq(integrationSettings.singleton, 1))
+      .catch(() => {})
   }
 
   const [finalRow] = await db.select().from(channels).where(eq(channels.id, channelId))
@@ -1060,7 +1077,7 @@ export async function notifyProvisionalBookingsToConfirm(actor: Actor, rawInput:
     if (b.attendeePhone) {
       const msgText =
         input.customMessage?.trim() ||
-        `Soniquete con Arte: Ya tenemos fecha (${dateLabel}) y lugar (${placeLabel}) para ${concert.title}. Por favor responde para confirmar tus ${b.seats} plazas provisionales.`
+        `soniqueteflamenco.com: Ya tenemos fecha (${dateLabel}) y lugar (${placeLabel}) para ${concert.title}. Por favor responde para confirmar tus ${b.seats} plazas provisionales.`
       const smsOut = await sendZadarmaSms({
         apiKey: smsKey,
         apiSecret: smsSecret,
@@ -2003,8 +2020,8 @@ export async function launchOutboundVapiCallAction(
       phoneNumber: params.phoneNumber,
       status: "completed",
       durationSeconds: 94,
-      summary: `Llamada saliente de promoción artística hacia ${params.callerName || params.phoneNumber}. Se presenta el dossier y pack de 9 vídeos de Soniquete con Arte.`,
-      transcript: `Asistente Lucía (Soniquete con Arte): ¡Hola! Llamo desde Soniquete con Arte Promoción Flamenca para presentarles nuestra programación de cante, guitarra y cuadro para esta temporada.\nInterlocutor (${params.callerName || params.phoneNumber}): Perfecto, envíame el vídeo promo y el dossier con cachés a nuestro correo y WhatsApp.`,
+      summary: `Llamada saliente de promoción artística hacia ${params.callerName || params.phoneNumber}. Se presenta el dossier y pack de 9 vídeos de soniqueteflamenco.com.`,
+      transcript: `Asistente Lucía (soniqueteflamenco.com): ¡Hola! Llamo desde soniqueteflamenco.com Promoción Flamenca para presentarles nuestra programación de cante, guitarra y cuadro para esta temporada.\nInterlocutor (${params.callerName || params.phoneNumber}): Perfecto, envíame el vídeo promo y el dossier con cachés a nuestro correo y WhatsApp.`,
       startedAt: new Date(),
       endedAt: new Date(),
     })

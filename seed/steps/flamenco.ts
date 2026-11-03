@@ -70,7 +70,7 @@ export async function seedFlamencoInitialData(tx: Executor, now: Date = new Date
       .values([
         {
           fullName: "Manuel Montoya «Soniquete»",
-          agencyName: "Soniquete con Arte · Promoción Flamenca",
+          agencyName: "soniqueteflamenco.com · Promoción Flamenca",
           roleKind: "manager",
           commissionPercent: 15,
           phone: "+34 919 931 525",
@@ -126,7 +126,7 @@ export async function seedFlamencoInitialData(tx: Executor, now: Date = new Date
           legalName: "Diego Cortés Jiménez",
           discipline: "toque",
           biography:
-            "Guitarrista flamenco de concierto y acompañamiento al cante y al baile. Soniquete tradicional con armonías contemporáneas. Primer premio de guitarra de concierto y guitarrista titular habitual de las principales figuras del catálogo de Soniquete con Arte.",
+            "Guitarrista flamenco de concierto y acompañamiento al cante y al baile. Soniquete tradicional con armonías contemporáneas. Primer premio de guitarra de concierto y guitarrista titular habitual de las principales figuras del catálogo de soniqueteflamenco.com.",
           styles: ["Rondeña", "Bulería por Soleá", "Taranta", "Guajira", "Zapateado"],
           bringsGroup: false,
           groupFormation: "Recital de guitarra solista o dúo con percusión (cajón y palmas)",
@@ -145,7 +145,7 @@ export async function seedFlamencoInitialData(tx: Executor, now: Date = new Date
         },
         {
           artisticName: "Cuadro Flamenco Soniquete de Madrid",
-          legalName: "Producciones Soniquete con Arte S.L.",
+          legalName: "Producciones soniqueteflamenco.com S.L.",
           discipline: "cuadro",
           biography:
             "Espectáculo integral de cante, toque, percusión y pareja de baile diseñado para grandes salas de conciertos, tablaos de primer nivel, ateneos culturales y fiestas mayores de ayuntamientos.",
@@ -667,7 +667,7 @@ export async function seedFlamencoInitialData(tx: Executor, now: Date = new Date
           summary:
             "El programador de Sala Villanos consulta disponibilidad de Carmen «La Trianera» con el guitarrista Diego del Morón para el ciclo de otoño. Se agenda videollamada en Cal.com y se envía SMS de confirmación por Zadarma.",
           transcript:
-            "Lucía (Soniquete con Arte): ¡Hola! Bienvenido a Soniquete con Arte Promoción Flamenca, le atiende Lucía. ¿Con quién tengo el gusto?\nCarlos (Sala Villanos): Hola, soy Carlos de la Sala Villanos de Madrid. Queríamos consultar fechas y caché de Carmen La Trianera con su cuadro y Diego del Morón a la guitarra.\nLucía: ¡Qué alegría, Carlos! Carmen actúa con Diego del Morón como guitarrista titular y su cuadro completo. El caché base es de 2.400 € y te enviamos ahora mismo el vídeo promo horizontal de 1 minuto y el reel por WhatsApp y correo. Te dejo agendada la videollamada de cierre en Cal.com y te mando confirmación por SMS.",
+            "Lucía (soniqueteflamenco.com): ¡Hola! Bienvenido a soniqueteflamenco.com Promoción Flamenca, le atiende Lucía. ¿Con quién tengo el gusto?\nCarlos (Sala Villanos): Hola, soy Carlos de la Sala Villanos de Madrid. Queríamos consultar fechas y caché de Carmen La Trianera con su cuadro y Diego del Morón a la guitarra.\nLucía: ¡Qué alegría, Carlos! Carmen actúa con Diego del Morón como guitarrista titular y su cuadro completo. El caché base es de 2.400 € y te enviamos ahora mismo el vídeo promo horizontal de 1 minuto y el reel por WhatsApp y correo. Te dejo agendada la videollamada de cierre en Cal.com y te mando confirmación por SMS.",
           relatedArtistId: art1.id,
           relatedVenueId: ven2.id,
           relatedConcertId: conc2.id,
@@ -684,7 +684,7 @@ export async function seedFlamencoInitialData(tx: Executor, now: Date = new Date
           summary:
             "Llamada saliente de presentación del catálogo de conciertos flamencos para la programación cultural municipal. Solicitan envío del dossier y de la pieza 1 · Completo horizontal (1:33).",
           transcript:
-            "Lucía (Soniquete con Arte): Buenos días, llamo desde Soniquete con Arte para hacerles llegar nuestra propuesta de flamenco para el Teatro Salón Cervantes.\nConcejalía: Perfecto, mándanos la oferta con los vídeos y el presupuesto a contratacion.cultura@aytoalcala-demo.es.",
+            "Lucía (soniqueteflamenco.com): Buenos días, llamo desde soniqueteflamenco.com para hacerles llegar nuestra propuesta de flamenco para el Teatro Salón Cervantes.\nConcejalía: Perfecto, mándanos la oferta con los vídeos y el presupuesto a contratacion.cultura@aytoalcala-demo.es.",
           relatedArtistId: art3.id,
           relatedVenueId: ven4.id,
           startedAt: ctx.now,
@@ -698,7 +698,7 @@ export async function seedFlamencoInitialData(tx: Executor, now: Date = new Date
         toPhone: "34919933764",
         callerId: "+34919933764",
         message:
-          "Soniquete con Arte: Confirmada tu reunion de contratacion para Sala Villanos el jueves a las 11:00h. Detalles enviados a tu correo.",
+          "soniqueteflamenco.com: Confirmada tu reunion de contratacion para Sala Villanos el jueves a las 11:00h. Detalles enviados a tu correo.",
         status: "success",
         cost: "0.045 EUR",
         messagesCount: 1,

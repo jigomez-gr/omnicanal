@@ -47,7 +47,7 @@ export async function createStripeCheckoutSession(
   form.set("line_items[0][price_data][product_data][name]", input.concept)
   form.set(
     "line_items[0][price_data][product_data][description]",
-    "Soniquete con Arte · Promoción Flamenca",
+    "soniqueteflamenco.com · Promoción Flamenca",
   )
   form.set("line_items[0][price_data][unit_amount]", String(unitAmountCents))
   form.set("line_items[0][quantity]", "1")
