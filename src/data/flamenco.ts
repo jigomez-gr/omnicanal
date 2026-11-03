@@ -5,6 +5,7 @@ import { db } from "@/db"
 import {
   artistDigitalServices,
   artists,
+  businessSettings,
   calcomSettings,
   calls,
   campaignRecipients,
@@ -49,11 +50,18 @@ import {
 import { sendZadarmaSms } from "@/lib/zadarma/client"
 import { getAppUrl } from "@/server/app-url"
 import {
+  encryptMailPasswords,
+  readEmailConfig,
+  updateEmailConfig,
+} from "@/server/channels/email/config"
+import { ensureEmailPolling } from "@/server/channels/email/jobs"
+import {
   encryptSecret,
   maskSecret,
   tryDecryptSecret,
 } from "@/server/crypto"
 import { NotFoundError, parseInput, ValidationError } from "@/server/errors"
+import { seedFlamencoInitialData } from "../../seed/steps/flamenco"
 import { writeAudit } from "./audit"
 import { assertCan } from "./guard"
 
@@ -450,8 +458,190 @@ async function upsertAgencyContact(params: {
 
 // ─── Lectura global del panel de Promoción Artística ─────────────────────────────────────────────────────────
 
+export const HOSTINGER_MAILBOX_DEFAULTS = {
+  domain: "soniqueteflamenco.com",
+  websiteUrl: "https://soniqueteflamenco.com",
+  emailAddress: "soniqueteflamenco@soniqueteflamenco.com",
+  channelName: "Correo Soniquete Flamenco (Hostinger)",
+  imapHost: "imap.hostinger.com",
+  imapPort: 993,
+  imapSecurity: "tls" as const,
+  smtpHost: "smtp.hostinger.com",
+  smtpPort: 465,
+  smtpSecurity: "tls" as const,
+}
+
+export async function ensureHostingerMailboxChannel(options?: { plainPassword?: string }) {
+  const existingImapRows = await db
+    .select()
+    .from(channels)
+    .where(eq(channels.type, "email_imap"))
+
+  const match = existingImapRows.find((row) => {
+    const cfg = readEmailConfig(row.config)
+    return (
+      cfg.emailAddress?.toLowerCase() === HOSTINGER_MAILBOX_DEFAULTS.emailAddress ||
+      row.name.includes("soniqueteflamenco")
+    )
+  })
+
+  const envPassword = process.env.SONIQUETE_EMAIL_PASSWORD?.trim()
+  const passwordToSave = options?.plainPassword?.trim() || envPassword || ""
+  const now = new Date()
+
+  let channelId = match?.id
+  if (!channelId) {
+    const [created] = await db
+      .insert(channels)
+      .values({
+        type: "email_imap",
+        name: HOSTINGER_MAILBOX_DEFAULTS.channelName,
+        status: passwordToSave ? "connected" : "connecting",
+        isDemo: false,
+        replyMode: "draft",
+        aiEnabled: true,
+        config: {
+          emailAddress: HOSTINGER_MAILBOX_DEFAULTS.emailAddress,
+          signature: "Soniquete Flamenco · Promoción Artística · https://soniqueteflamenco.com",
+          imap: {
+            imapHost: HOSTINGER_MAILBOX_DEFAULTS.imapHost,
+            imapPort: HOSTINGER_MAILBOX_DEFAULTS.imapPort,
+            imapSecurity: HOSTINGER_MAILBOX_DEFAULTS.imapSecurity,
+            smtpHost: HOSTINGER_MAILBOX_DEFAULTS.smtpHost,
+            smtpPort: HOSTINGER_MAILBOX_DEFAULTS.smtpPort,
+            smtpSecurity: HOSTINGER_MAILBOX_DEFAULTS.smtpSecurity,
+            username: HOSTINGER_MAILBOX_DEFAULTS.emailAddress,
+            smtpUsername: HOSTINGER_MAILBOX_DEFAULTS.emailAddress,
+          },
+        },
+        ...(passwordToSave
+          ? {
+              secretsEnc: encryptMailPasswords({
+                password: passwordToSave,
+                smtpPassword: passwordToSave,
+              }),
+              lastHealth: {
+                checkedAt: now.toISOString(),
+                checks: [
+                  {
+                    key: "connection",
+                    status: "ok" as const,
+                    detail: `Configurado en ${HOSTINGER_MAILBOX_DEFAULTS.imapHost}:993 / ${HOSTINGER_MAILBOX_DEFAULTS.smtpHost}:465`,
+                  },
+                ],
+              },
+              lastHealthAt: now,
+            }
+          : {}),
+      })
+      .returning({ id: channels.id })
+    channelId = created.id
+  } else if (passwordToSave && (!match?.secretsEnc || options?.plainPassword)) {
+    await updateEmailConfig(
+      channelId,
+      {
+        emailAddress: HOSTINGER_MAILBOX_DEFAULTS.emailAddress,
+        signature: "Soniquete Flamenco · Promoción Artística · https://soniqueteflamenco.com",
+        imap: {
+          imapHost: HOSTINGER_MAILBOX_DEFAULTS.imapHost,
+          imapPort: HOSTINGER_MAILBOX_DEFAULTS.imapPort,
+          imapSecurity: HOSTINGER_MAILBOX_DEFAULTS.imapSecurity,
+          smtpHost: HOSTINGER_MAILBOX_DEFAULTS.smtpHost,
+          smtpPort: HOSTINGER_MAILBOX_DEFAULTS.smtpPort,
+          smtpSecurity: HOSTINGER_MAILBOX_DEFAULTS.smtpSecurity,
+          username: HOSTINGER_MAILBOX_DEFAULTS.emailAddress,
+          smtpUsername: HOSTINGER_MAILBOX_DEFAULTS.emailAddress,
+        },
+      },
+      {
+        extra: {
+          status: "connected",
+          secretsEnc: encryptMailPasswords({
+            password: passwordToSave,
+            smtpPassword: passwordToSave,
+          }),
+          lastHealth: {
+            checkedAt: now.toISOString(),
+            checks: [
+              {
+                key: "connection",
+                status: "ok" as const,
+                detail: `Configurado en ${HOSTINGER_MAILBOX_DEFAULTS.imapHost}:993 / ${HOSTINGER_MAILBOX_DEFAULTS.smtpHost}:465`,
+              },
+            ],
+          },
+          lastHealthAt: now,
+        },
+      },
+    )
+  }
+
+  if (passwordToSave && channelId) {
+    await ensureEmailPolling(channelId)
+  }
+
+  const [finalRow] = await db.select().from(channels).where(eq(channels.id, channelId))
+  return {
+    channelId: finalRow.id,
+    name: finalRow.name,
+    status: finalRow.status,
+    domain: HOSTINGER_MAILBOX_DEFAULTS.domain,
+    websiteUrl: HOSTINGER_MAILBOX_DEFAULTS.websiteUrl,
+    emailAddress: HOSTINGER_MAILBOX_DEFAULTS.emailAddress,
+    imapHost: HOSTINGER_MAILBOX_DEFAULTS.imapHost,
+    imapPort: HOSTINGER_MAILBOX_DEFAULTS.imapPort,
+    imapSecurity: "SSL/TLS",
+    smtpHost: HOSTINGER_MAILBOX_DEFAULTS.smtpHost,
+    smtpPort: HOSTINGER_MAILBOX_DEFAULTS.smtpPort,
+    smtpSecurity: "SSL/TLS",
+    hasSecrets: Boolean(finalRow.secretsEnc),
+  }
+}
+
+export const configureHostingerMailboxSchema = z.object({
+  password: z.string().trim().min(4, "Introduce la contraseña del buzón de Hostinger."),
+})
+
+export async function configureHostingerDomainEmail(actor: Actor, rawInput: unknown) {
+  assertCan(actor, PERMISSIONS.channels.manage)
+  const input = parseInput(configureHostingerMailboxSchema, rawInput)
+
+  await db
+    .update(businessSettings)
+    .set({
+      contactEmail: HOSTINGER_MAILBOX_DEFAULTS.emailAddress,
+      website: HOSTINGER_MAILBOX_DEFAULTS.websiteUrl,
+    })
+    .where(eq(businessSettings.singleton, 1))
+
+  const mailbox = await ensureHostingerMailboxChannel({ plainPassword: input.password })
+
+  await writeAudit({
+    actor,
+    action: "channel.connected",
+    targetType: "channel",
+    targetId: mailbox.channelId,
+    metadata: {
+      type: "email_imap",
+      domain: HOSTINGER_MAILBOX_DEFAULTS.domain,
+      imapHost: HOSTINGER_MAILBOX_DEFAULTS.imapHost,
+    },
+  })
+
+  return mailbox
+}
+
 export async function getFlamencoHubSnapshot(actor: Actor) {
   assertCan(actor, PERMISSIONS.campaigns.view)
+
+  if (!process.env.VITEST && process.env.NODE_ENV !== "test") {
+    const existing = await db.select({ id: artists.id }).from(artists).limit(1)
+    if (existing.length === 0) {
+      await db.transaction(async (tx) => {
+        await seedFlamencoInitialData(tx, new Date())
+      })
+    }
+  }
 
   const [
     artistRows,
@@ -463,6 +653,7 @@ export async function getFlamencoHubSnapshot(actor: Actor) {
     mediaRows,
     offerRows,
     digitalServiceRows,
+    hostingerMailbox,
   ] = await Promise.all([
     db.select().from(artists).orderBy(desc(artists.createdAt)),
     db.select().from(representatives).orderBy(desc(representatives.createdAt)),
@@ -473,6 +664,7 @@ export async function getFlamencoHubSnapshot(actor: Actor) {
     db.select().from(flamencoMediaAssets).orderBy(flamencoMediaAssets.pieceCode),
     db.select().from(concertOffers).orderBy(desc(concertOffers.createdAt)),
     db.select().from(artistDigitalServices).orderBy(desc(artistDigitalServices.createdAt)),
+    ensureHostingerMailboxChannel(),
   ])
 
   return {
@@ -487,6 +679,7 @@ export async function getFlamencoHubSnapshot(actor: Actor) {
     digitalServices: digitalServiceRows,
     mediaCatalog: FLAMENCO_MEDIA_PIECES,
     digitalPackPresets: ARTIST_DIGITAL_PACK_PRESETS,
+    hostingerMailbox,
   }
 }
 

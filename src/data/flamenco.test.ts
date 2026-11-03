@@ -9,6 +9,7 @@ import {
 import { AuthError } from "@/server/errors"
 import { createBusiness, createUser, type TestUser } from "@/test/factories"
 import {
+  configureHostingerDomainEmail,
   confirmEventProvisionalBooking,
   createArtistDigitalService,
   createEventProvisionalBooking,
@@ -416,5 +417,20 @@ describe("Agencia de Promoción Flamenca, Cal.com, Stripe y VAPI/Zadarma", () =>
     expect(
       snapshot.provisionalBookings.filter((b) => b.concertId === viaje.id).length,
     ).toBe(2)
+    expect(snapshot.hostingerMailbox).toMatchObject({
+      domain: "soniqueteflamenco.com",
+      emailAddress: "soniqueteflamenco@soniqueteflamenco.com",
+      imapHost: "imap.hostinger.com",
+      imapPort: 993,
+      smtpHost: "smtp.hostinger.com",
+      smtpPort: 465,
+    })
+
+    // 7. Configurar y cifrar la contraseña del buzón Hostinger en base de datos
+    const configuredMailbox = await configureHostingerDomainEmail(owner.actor, {
+      password: "clave-de-prueba-cifrada-en-bd",
+    })
+    expect(configuredMailbox.hasSecrets).toBe(true)
+    expect(configuredMailbox.status).toBe("connected")
   })
 })

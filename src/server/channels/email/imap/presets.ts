@@ -72,6 +72,8 @@ const DOMAIN_PRESETS: Record<string, MailPresetId> = {
   "gmx.de": "gmxDe",
   "gmx.com": "gmx",
   "gmx.es": "gmx",
+  "soniqueteflamenco.com": "hostinger",
+  "soniqueteflamenco.es": "hostinger",
 };
 
 /** Microsoft's consumer domains: only through the Outlook option ([COR-09]). */

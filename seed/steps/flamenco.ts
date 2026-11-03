@@ -1,3 +1,4 @@
+import type { Executor } from "@/db"
 import {
   artistDigitalServices,
   artists,
@@ -56,9 +57,12 @@ function buildMediaPackRows(params: {
   }))
 }
 
-export const flamencoStep: SeedStep = {
-  name: "agencia-flamenco-vapi-calcom-stripe",
-  prepare: async (ctx) => async (tx) => {
+export async function seedFlamencoInitialData(tx: Executor, now: Date = new Date()) {
+  const existingArtists = await tx.select({ id: artists.id }).from(artists).limit(1)
+  if (existingArtists.length > 0) return
+
+  const ctx = { now }
+  {
     // 1. Representantes
     const [rep1, rep2] = await tx
       .insert(representatives)
@@ -567,22 +571,28 @@ export const flamencoStep: SeedStep = {
     ])
 
     // 9. Configuración Cal.com, Stripe & Bizum y Registro de Pagos
-    await tx.insert(calcomSettings).values({
-      enabled: true,
-      baseUrl: "https://api.cal.com/v2",
-      defaultEventTypeId: "123456",
-      autoSyncBookings: true,
-      lastTestStatus: "ok",
-      lastTestedAt: ctx.now,
-    })
+    const existingCal = await tx.select({ id: calcomSettings.id }).from(calcomSettings).limit(1)
+    if (existingCal.length === 0) {
+      await tx.insert(calcomSettings).values({
+        enabled: true,
+        baseUrl: "https://api.cal.com/v2",
+        defaultEventTypeId: "123456",
+        autoSyncBookings: true,
+        lastTestStatus: "ok",
+        lastTestedAt: ctx.now,
+      })
+    }
 
-    await tx.insert(paymentSettings).values({
-      stripeEnabled: true,
-      publishableKey: "pk_live_soniquete_con_arte_demo",
-      enableCardAndWallets: true,
-      enableBizum: true,
-      currency: "EUR",
-    })
+    const existingPay = await tx.select({ id: paymentSettings.id }).from(paymentSettings).limit(1)
+    if (existingPay.length === 0) {
+      await tx.insert(paymentSettings).values({
+        stripeEnabled: true,
+        publishableKey: "pk_live_soniquete_con_arte_demo",
+        enableCardAndWallets: true,
+        enableBizum: true,
+        currency: "EUR",
+      })
+    }
 
     await tx.insert(paymentRecords).values([
       {
@@ -617,25 +627,28 @@ export const flamencoStep: SeedStep = {
     ])
 
     // 10. Configuración VAPI & Zadarma + Llamadas + SMS Zadarma
-    await tx.insert(vapiSettings).values({
-      vapiEnabled: true,
-      vapiAssistantId: "asst_soniquete_flamenco_madrid",
-      vapiPhoneNumberId: "ph_zadarma_sip_madrid",
-      zadarmaPhoneNumber: "+34919931525",
-      zadarmaSipServer: "sip.zadarma.com",
-      zadarmaSipLogin: "633610",
-      voiceProvider: "11labs",
-      voiceId: "791d5162-d5eb-40f0-8189-f19db44611d8",
-      transcriberProvider: "deepgram",
-      transcriberModel: "nova-2",
-      transcriberLanguage: "es",
-      llmModel: "gpt-4o-mini",
-      temperature: "0.3",
-      systemPrompt: composeFlamencoVapiPrompt({}),
-      n8nSmsWebhookUrl: "https://n8n.soniqueteflamenco.com/webhook/zadarma-sms",
-      zadarmaSmsCallerId: "Soniquete",
-      autoSendBookingSms: true,
-    })
+    const existingVapi = await tx.select({ id: vapiSettings.id }).from(vapiSettings).limit(1)
+    if (existingVapi.length === 0) {
+      await tx.insert(vapiSettings).values({
+        vapiEnabled: true,
+        vapiAssistantId: "asst_soniquete_flamenco_madrid",
+        vapiPhoneNumberId: "ph_zadarma_sip_madrid",
+        zadarmaPhoneNumber: "+34919931525",
+        zadarmaSipServer: "sip.zadarma.com",
+        zadarmaSipLogin: "633610",
+        voiceProvider: "11labs",
+        voiceId: "791d5162-d5eb-40f0-8189-f19db44611d8",
+        transcriberProvider: "deepgram",
+        transcriberModel: "nova-2",
+        transcriberLanguage: "es",
+        llmModel: "gpt-4o-mini",
+        temperature: "0.3",
+        systemPrompt: composeFlamencoVapiPrompt({}),
+        n8nSmsWebhookUrl: "https://n8n.soniqueteflamenco.com/webhook/zadarma-sms",
+        zadarmaSmsCallerId: "Soniquete",
+        autoSendBookingSms: true,
+      })
+    }
 
     const [call1] = await tx
       .insert(calls)
@@ -694,5 +707,12 @@ export const flamencoStep: SeedStep = {
         callId: call1.id,
       },
     ])
+  }
+}
+
+export const flamencoStep: SeedStep = {
+  name: "agencia-flamenco-vapi-calcom-stripe",
+  prepare: async (ctx) => async (tx) => {
+    await seedFlamencoInitialData(tx, ctx.now)
   },
 }

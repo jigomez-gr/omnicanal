@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import {
+  configureHostingerDomainEmail,
   confirmEventProvisionalBooking,
   createArtistDigitalService,
   createEventProvisionalBooking,
@@ -18,6 +19,14 @@ import {
   simulateAndScheduleConcertOffer,
 } from "@/data/flamenco"
 import { requireActor } from "@/server/session"
+
+export async function configureHostingerEmailAction(input: unknown) {
+  const actor = await requireActor()
+  const res = await configureHostingerDomainEmail(actor, input)
+  revalidatePath("/promocion")
+  revalidatePath("/canales")
+  return res
+}
 
 export async function createArtistAction(input: unknown) {
   const actor = await requireActor()

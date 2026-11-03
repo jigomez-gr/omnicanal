@@ -24,6 +24,7 @@ import {
   Video,
 } from "lucide-react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useState, useTransition } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -47,6 +48,7 @@ import {
   type VenueKind,
 } from "@/lib/flamenco/catalog"
 import {
+  configureHostingerEmailAction,
   confirmProvisionalBookingAction,
   createArtistAction,
   createArtistDigitalServiceAction,
@@ -82,9 +84,11 @@ export function PromocionClient({
   snapshot: Snapshot
   canManage: boolean
 }) {
+  const router = useRouter()
   const [activeTab, setActiveTab] = useState<TabKey>("interpretes")
   const [isPending, startTransition] = useTransition()
   const [feedback, setFeedback] = useState<string | null>(null)
+  const [hostingerPassword, setHostingerPassword] = useState("")
   const [selectedArtistIdForMedia, setSelectedArtistIdForMedia] = useState<string>(
     snapshot.artists[0]?.id ?? "",
   )
@@ -229,6 +233,70 @@ export function PromocionClient({
               <div className="text-xs text-muted-foreground">Multimedia / YouTube</div>
             </div>
           </div>
+        </div>
+
+        {/* Tarjeta del Dominio y Buzón Oficial Hostinger (soniqueteflamenco.com / soniqueteflamenco@soniqueteflamenco.com) */}
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-muted/25 p-3.5 text-xs">
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-bold text-foreground">
+                ✉️ Buzón Oficial Hostinger: {snapshot.hostingerMailbox.emailAddress}
+              </span>
+              <Badge variant={snapshot.hostingerMailbox.hasSecrets ? "default" : "secondary"}>
+                {snapshot.hostingerMailbox.hasSecrets
+                  ? "Contraseña Cifrada Activa (Conectado)"
+                  : "Servidores Listos · Pendiente de Guardar Contraseña Cifrada"}
+              </Badge>
+            </div>
+            <div className="text-muted-foreground">
+              Dominio: <strong>{snapshot.hostingerMailbox.domain}</strong> · IMAP:{" "}
+              <code>
+                {snapshot.hostingerMailbox.imapHost}:{snapshot.hostingerMailbox.imapPort} (
+                {snapshot.hostingerMailbox.imapSecurity})
+              </code>{" "}
+              · SMTP:{" "}
+              <code>
+                {snapshot.hostingerMailbox.smtpHost}:{snapshot.hostingerMailbox.smtpPort} (
+                {snapshot.hostingerMailbox.smtpSecurity})
+              </code>
+            </div>
+          </div>
+
+          {canManage ? (
+            <form
+              className="flex flex-wrap items-center gap-2"
+              onSubmit={(e) => {
+                e.preventDefault()
+                startTransition(async () => {
+                  const res = await configureHostingerEmailAction({
+                    password: hostingerPassword,
+                  })
+                  setHostingerPassword("")
+                  setFeedback(
+                    `Buzón ${res.emailAddress} (${res.imapHost}:993 / ${res.smtpHost}:465) activado con contraseña cifrada en base de datos.`,
+                  )
+                  router.refresh()
+                })
+              }}
+            >
+              <Input
+                type="password"
+                required
+                value={hostingerPassword}
+                onChange={(e) => setHostingerPassword(e.target.value)}
+                placeholder="Pega aquí la contraseña del buzón Hostinger"
+                className="h-8 w-64 text-xs"
+              />
+              <Button type="submit" size="sm" disabled={isPending}>
+                Guardar y Cifrar Buzón
+              </Button>
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/canales/${snapshot.hostingerMailbox.channelId}`}>
+                  Ver Canal Correo <ExternalLink className="ml-1 size-3" />
+                </Link>
+              </Button>
+            </form>
+          ) : null}
         </div>
       </div>
 
@@ -1989,6 +2057,7 @@ export function PromocionClient({
                       ? `Sala «${res.name}» (${res.email}) extraída desde ${res.websiteUrl} y añadida a Salas y Contactos.`
                       : `Intérprete «${res.name}» (${res.email}) extraído desde ${res.websiteUrl} con su Pack Multimedia y añadido a Contactos para ofrecerle Servicios Digitales.`,
                   )
+                  router.refresh()
                 })
               }}
             >

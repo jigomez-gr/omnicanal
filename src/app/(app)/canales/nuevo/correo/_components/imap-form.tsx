@@ -31,8 +31,8 @@ const SECURITY_OPTIONS: { value: MailSecurityOption; label: string }[] = [
   { value: "tls", label: "SSL/TLS" },
   { value: "starttls", label: "STARTTLS" },
 ];
-const EMPTY_IMAP: Server = { host: "", port: "993", security: "tls" };
-const EMPTY_SMTP: Server = { host: "", port: "465", security: "tls" };
+const EMPTY_IMAP: Server = { host: "imap.hostinger.com", port: "993", security: "tls" };
+const EMPTY_SMTP: Server = { host: "smtp.hostinger.com", port: "465", security: "tls" };
 
 function serverOf(host: string | null, port: number | null, security: MailSecurityOption | null, fallback: Server): Server {
   return host ? { host, port: String(port ?? fallback.port), security: security ?? fallback.security } : fallback;
@@ -49,8 +49,8 @@ export function ImapForm({ channelId, name, onChannel, onNameErrors, onSwitchPro
   const id = useId();
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
-  const [email, setEmail] = useState(savedEmail ?? "");
-  const [username, setUsername] = useState(saved?.username ?? "");
+  const [email, setEmail] = useState(savedEmail ?? "soniqueteflamenco@soniqueteflamenco.com");
+  const [username, setUsername] = useState(saved?.username ?? "soniqueteflamenco@soniqueteflamenco.com");
   const [smtpUsername, setSmtpUsername] = useState(saved?.smtpUsername ?? "");
   const [servers, setServers] = useState<Record<ServerKey, Server>>({
     imap: serverOf(saved?.imapHost ?? null, saved?.imapPort ?? null, saved?.imapSecurity ?? null, EMPTY_IMAP),

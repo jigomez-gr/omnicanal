@@ -8,6 +8,14 @@ describe("[COR-10] servidores rellenados por dominio", () => {
     expect(suggestMailSettings("ana@icloud.com")).toMatchObject({ kind: "preset", preset: { smtp: { host: "smtp.mail.me.com", port: 587, security: "starttls" }, imapUserWithoutDomain: true } });
     expect(suggestMailSettings("ana@zohomail.com")).toMatchObject({ kind: "preset", preset: { imap: { host: "imap.zoho.com" } } });
     expect(suggestMailSettings("ana@gmx.de")).toMatchObject({ kind: "preset", preset: { imap: { host: "imap.gmx.net" } } });
+    expect(suggestMailSettings("soniqueteflamenco@soniqueteflamenco.com")).toMatchObject({
+      kind: "preset",
+      preset: {
+        id: "hostinger",
+        imap: { host: "imap.hostinger.com", port: 993, security: "tls" },
+        smtp: { host: "smtp.hostinger.com", port: 465, security: "tls" },
+      },
+    });
   });
 
   it("dominio propio: cPanel (mail.dominio) y la lista de hostings (IONOS, Hostinger, OVH…)", () => {
