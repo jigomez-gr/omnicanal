@@ -166,6 +166,22 @@ export function buildFlamencoVapiTools(webhookUrl: string) {
   ]
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export function normalizeE164Phone(raw: string): string {
+  const digits = raw.replace(/\D/g, "")
+  if (digits.startsWith("34") && digits.length >= 11) {
+    return `+${digits}`
+  }
+  if (digits.length === 9) {
+    return `+34${digits}`
+  }
+  if (raw.startsWith("+")) {
+    return `+${digits}`
+  }
+  return `+${digits}`
+}
+
 export async function triggerVapiOutboundCall(params: {
   apiKey: string
   assistantId: string
@@ -173,12 +189,17 @@ export async function triggerVapiOutboundCall(params: {
   customerPhone: string
   customerName?: string | null
 }): Promise<{ ok: boolean; vapiCallId: string; simulated: boolean; message: string }> {
-  let cleanPhone = params.customerPhone.replace(/[^\d+]/g, "")
-  if (!cleanPhone.startsWith("+")) {
-    cleanPhone = cleanPhone.startsWith("34") ? `+${cleanPhone}` : `+34${cleanPhone}`
-  }
+  const cleanPhone = normalizeE164Phone(params.customerPhone)
+  const phoneId =
+    params.phoneNumberId && UUID_REGEX.test(params.phoneNumberId.trim())
+      ? params.phoneNumberId.trim()
+      : "04a39510-5ded-4446-a84e-f5a99eb3d591"
+  const assistantId =
+    params.assistantId && UUID_REGEX.test(params.assistantId.trim())
+      ? params.assistantId.trim()
+      : "b9e5e266-07f6-4d70-9f30-93ccfb199a95"
 
-  if (!params.apiKey || !params.assistantId) {
+  if (!params.apiKey || !assistantId) {
     return {
       ok: true,
       vapiCallId: `vapi_sim_${Date.now().toString(36)}`,
@@ -188,10 +209,8 @@ export async function triggerVapiOutboundCall(params: {
   }
 
   try {
-    const phoneId =
-      params.phoneNumberId?.trim() || "04a39510-5ded-4446-a84e-f5a99eb3d591"
     const body: Record<string, unknown> = {
-      assistantId: params.assistantId,
+      assistantId,
       phoneNumberId: phoneId,
       customer: {
         number: cleanPhone,
@@ -229,19 +248,19 @@ export async function triggerVapiOutboundCall(params: {
       }
     }
 
-    const data = (await res.json()) as { id?: string }
+    const data = (await res.json()) as { id?: string; status?: string }
     return {
       ok: true,
       vapiCallId: data.id || `vapi_${Date.now()}`,
       simulated: false,
-      message: `Llamada saliente iniciada en VAPI hacia ${cleanPhone}.`,
+      message: `¡Llamada de VAPI iniciada con éxito hacia ${cleanPhone}! Estado: ${data.status || "en cola"}.`,
     }
   } catch (err) {
     return {
       ok: true,
       vapiCallId: `vapi_offline_${Date.now().toString(36)}`,
       simulated: true,
-      message: `Llamada registrada en modo demostración (${err instanceof Error ? err.message : "sin red"}).`,
+      message: `Llamada registrada en modo seguro (${err instanceof Error ? err.message : "sin red"}).`,
     }
   }
 }

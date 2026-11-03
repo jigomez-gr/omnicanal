@@ -52,13 +52,13 @@ export function LlamadasClient({
   )
 
   // Estados llamada saliente
-  const [testCallPhone, setTestCallPhone] = useState("+34919933764")
-  const [testCallName, setTestCallName] = useState("Programador Tablao / Sala")
+  const [testCallPhone, setTestCallPhone] = useState("+34649453996")
+  const [testCallName, setTestCallName] = useState("José Ignacio (Prueba VAPI)")
 
   // Estados envío SMS Zadarma directo
-  const [smsPhone, setSmsPhone] = useState("+34919933764")
+  const [smsPhone, setSmsPhone] = useState("+34649453996")
   const [smsText, setSmsText] = useState(
-    "soniqueteflamenco.com: Confirmada nuestra reunion de contratacion artistica. Te hemos enviado el dossier y videos a tu correo.",
+    "🎸 [SONIQUETE FLAMENCO] Confirmada nuestra reunión de contratación artística. Te hemos enviado el dossier y vídeos a tu correo.",
   )
 
   // Estados Configuración VAPI & Zadarma (exactamente como en crm_salvadora)
@@ -106,44 +106,93 @@ export function LlamadasClient({
         </div>
       ) : null}
 
-      {/* Subnavegación */}
-      <div className="flex flex-wrap gap-2 border-b pb-3">
-        <Button
-          variant={activeTab === "registro" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setActiveTab("registro")}
-          className="gap-1.5"
-        >
-          <PhoneCall className="size-4" />
-          Registro de Llamadas ({data.calls.length})
-        </Button>
-        <Button
-          variant={activeTab === "estudio_voz" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setActiveTab("estudio_voz")}
-          className="gap-1.5"
-        >
-          <Headphones className="size-4" />
-          Estudio de Voz IA (ElevenLabs / Deepgram / SIP Zadarma)
-        </Button>
-        <Button
-          variant={activeTab === "sms_zadarma" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setActiveTab("sms_zadarma")}
-          className="gap-1.5"
-        >
-          <MessageSquareText className="size-4" />
-          SMS Zadarma ({data.smsLogs.length})
-        </Button>
-        <Button
-          variant={activeTab === "ajustes_vapi" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setActiveTab("ajustes_vapi")}
-          className="gap-1.5"
-        >
-          <Settings2 className="size-4" />
-          Voz Telefónica (VAPI & Zadarma) y SMS (n8n)
-        </Button>
+      {/* Subnavegación y accesos directos de prueba */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant={activeTab === "registro" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setActiveTab("registro")}
+            className="gap-1.5"
+          >
+            <PhoneCall className="size-4" />
+            Registro de Llamadas ({data.calls.length})
+          </Button>
+          <Button
+            variant={activeTab === "estudio_voz" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setActiveTab("estudio_voz")}
+            className="gap-1.5"
+          >
+            <Headphones className="size-4" />
+            Estudio de Voz IA (ElevenLabs / Deepgram / SIP Zadarma)
+          </Button>
+          <Button
+            variant={activeTab === "sms_zadarma" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setActiveTab("sms_zadarma")}
+            className="gap-1.5"
+          >
+            <MessageSquareText className="size-4" />
+            SMS Zadarma ({data.smsLogs.length})
+          </Button>
+          <Button
+            variant={activeTab === "ajustes_vapi" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setActiveTab("ajustes_vapi")}
+            className="gap-1.5"
+          >
+            <Settings2 className="size-4" />
+            Voz Telefónica (VAPI & Zadarma) y SMS (n8n)
+          </Button>
+        </div>
+
+        {/* Botones rápidos de prueba a tu móvil */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="default"
+            disabled={isPending}
+            onClick={() => {
+              startTransition(async () => {
+                const res = await triggerOutboundCallServerAction({
+                  phoneNumber: "+34649453996",
+                  callerName: "José Ignacio",
+                })
+                setFeedback(res.message)
+              })
+            }}
+            className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
+          >
+            <PhoneOutgoing className="size-4" />
+            📞 Probar llamada a mi móvil
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={isPending}
+            onClick={() => {
+              startTransition(async () => {
+                const res = await sendZadarmaSmsServerAction({
+                  toPhone: "+34649453996",
+                  message:
+                    "🎸 [SONIQUETE FLAMENCO] Prueba de verificación SMS desde soniqueteflamenco.com",
+                })
+                if (res.ok) {
+                  setFeedback(
+                    `SMS enviado con éxito por Zadarma a +${res.log.toPhone} (coste: ${res.log.cost || "0.04 EUR"}).`,
+                  )
+                } else {
+                  setFeedback(`Aviso de Zadarma: ${res.log.errorMessage || res.log.status}.`)
+                }
+              })
+            }}
+            className="gap-1.5"
+          >
+            <Send className="size-4" />
+            💬 Probar SMS a mi móvil
+          </Button>
+        </div>
       </div>
 
       {/* TAB 1: REGISTRO DE LLAMADAS + AUDIO + TRANSCRIPCIÓN */}

@@ -1886,14 +1886,17 @@ export async function getVapiAndCallsDashboard(actor: Actor) {
 
   const isTest = process.env.NODE_ENV === "test"
   if (!isTest) {
+    const UUID_REGEX =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
     if (!cfg) {
       const [created] = await db.insert(vapiSettings).values(defaultVapiValues).returning()
       cfg = created
     } else if (
       !cfg.vapiApiKeyEncrypted ||
       !cfg.vapiAssistantId ||
-      cfg.vapiAssistantId.startsWith("asst_") ||
+      !UUID_REGEX.test(cfg.vapiAssistantId) ||
       !cfg.vapiPhoneNumberId ||
+      !UUID_REGEX.test(cfg.vapiPhoneNumberId) ||
       !cfg.zadarmaSipPasswordEncrypted ||
       !cfg.zadarmaSmsKeyEncrypted ||
       !cfg.zadarmaSmsSecretEncrypted
@@ -1902,11 +1905,13 @@ export async function getVapiAndCallsDashboard(actor: Actor) {
         vapiApiKeyEncrypted:
           cfg.vapiApiKeyEncrypted || encryptSecret("868c4794-d264-4891-9d7e-b3fe5f33f2a1"),
         vapiAssistantId:
-          cfg.vapiAssistantId && !cfg.vapiAssistantId.startsWith("asst_")
+          cfg.vapiAssistantId && UUID_REGEX.test(cfg.vapiAssistantId)
             ? cfg.vapiAssistantId
             : "b9e5e266-07f6-4d70-9f30-93ccfb199a95",
         vapiPhoneNumberId:
-          cfg.vapiPhoneNumberId || "04a39510-5ded-4446-a84e-f5a99eb3d591",
+          cfg.vapiPhoneNumberId && UUID_REGEX.test(cfg.vapiPhoneNumberId)
+            ? cfg.vapiPhoneNumberId
+            : "04a39510-5ded-4446-a84e-f5a99eb3d591",
         zadarmaPhoneNumber: cfg.zadarmaPhoneNumber || "+34919933764",
         zadarmaSipServer: cfg.zadarmaSipServer || "sip.zadarma.com",
         zadarmaSipLogin: cfg.zadarmaSipLogin || "536586",
