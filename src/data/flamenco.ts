@@ -1859,26 +1859,69 @@ export async function getVapiAndCallsDashboard(actor: Actor) {
   assertCan(actor, PERMISSIONS.campaigns.view)
   let [cfg] = await db.select().from(vapiSettings).limit(1)
 
-  // Auto-upgrade / self-heal outdated phone, login, SIP password or SMS keys
-  if (
-    cfg &&
-    (cfg.zadarmaPhoneNumber !== "+34919933764" ||
-      cfg.zadarmaSipLogin !== "536586" ||
-      cfg.zadarmaSmsCallerId !== "+34919933764" ||
+  const defaultVapiValues = {
+    vapiEnabled: true,
+    vapiApiKeyEncrypted: encryptSecret("868c4794-d264-4891-9d7e-b3fe5f33f2a1"),
+    vapiAssistantId: "b9e5e266-07f6-4d70-9f30-93ccfb199a95",
+    vapiPhoneNumberId: "04a39510-5ded-4446-a84e-f5a99eb3d591",
+    zadarmaPhoneNumber: "+34919933764",
+    zadarmaSipServer: "sip.zadarma.com",
+    zadarmaSipLogin: "536586",
+    zadarmaSipPasswordEncrypted: encryptSecret("PddEcd72ZQ"),
+    voiceProvider: "11labs",
+    voiceId: "21m00Tcm4TlvDq8ikWAM",
+    transcriberProvider: "deepgram",
+    transcriberModel: "nova-3-general",
+    transcriberLanguage: "es",
+    llmModel: "gpt-4o-mini",
+    temperature: "0.3",
+    systemPrompt: composeFlamencoVapiPrompt({}),
+    n8nSmsWebhookUrl: "https://n8n.soniqueteflamenco.com/webhook/zadarma-sms",
+    zadarmaSmsKeyEncrypted: encryptSecret("45dc42d6f22439899024"),
+    zadarmaSmsSecretEncrypted: encryptSecret("34061190a934a453aa99"),
+    zadarmaSmsCallerId: "Teamsale",
+    autoSendBookingSms: true,
+    updatedAt: new Date(),
+  }
+
+  const isTest = process.env.NODE_ENV === "test"
+  if (!isTest) {
+    if (!cfg) {
+      const [created] = await db.insert(vapiSettings).values(defaultVapiValues).returning()
+      cfg = created
+    } else if (
+      !cfg.vapiApiKeyEncrypted ||
+      !cfg.vapiAssistantId ||
+      cfg.vapiAssistantId.startsWith("asst_") ||
+      !cfg.vapiPhoneNumberId ||
       !cfg.zadarmaSipPasswordEncrypted ||
-      !cfg.zadarmaSmsKeyEncrypted)
-  ) {
-    const updatedValues = {
-      zadarmaPhoneNumber: "+34919933764",
-      zadarmaSipLogin: "536586",
-      zadarmaSipPasswordEncrypted: cfg.zadarmaSipPasswordEncrypted || encryptSecret("PddEcd72ZQ"),
-      zadarmaSmsKeyEncrypted: cfg.zadarmaSmsKeyEncrypted || encryptSecret("45dc42d6f22439899024"),
-      zadarmaSmsSecretEncrypted: cfg.zadarmaSmsSecretEncrypted || encryptSecret("34061190a934a453aa99"),
-      zadarmaSmsCallerId: "+34919933764",
-      updatedAt: new Date(),
+      !cfg.zadarmaSmsKeyEncrypted ||
+      !cfg.zadarmaSmsSecretEncrypted
+    ) {
+      const healValues = {
+        vapiApiKeyEncrypted:
+          cfg.vapiApiKeyEncrypted || encryptSecret("868c4794-d264-4891-9d7e-b3fe5f33f2a1"),
+        vapiAssistantId:
+          cfg.vapiAssistantId && !cfg.vapiAssistantId.startsWith("asst_")
+            ? cfg.vapiAssistantId
+            : "b9e5e266-07f6-4d70-9f30-93ccfb199a95",
+        vapiPhoneNumberId:
+          cfg.vapiPhoneNumberId || "04a39510-5ded-4446-a84e-f5a99eb3d591",
+        zadarmaPhoneNumber: cfg.zadarmaPhoneNumber || "+34919933764",
+        zadarmaSipServer: cfg.zadarmaSipServer || "sip.zadarma.com",
+        zadarmaSipLogin: cfg.zadarmaSipLogin || "536586",
+        zadarmaSipPasswordEncrypted:
+          cfg.zadarmaSipPasswordEncrypted || encryptSecret("PddEcd72ZQ"),
+        zadarmaSmsKeyEncrypted:
+          cfg.zadarmaSmsKeyEncrypted || encryptSecret("45dc42d6f22439899024"),
+        zadarmaSmsSecretEncrypted:
+          cfg.zadarmaSmsSecretEncrypted || encryptSecret("34061190a934a453aa99"),
+        zadarmaSmsCallerId: cfg.zadarmaSmsCallerId || "Teamsale",
+        updatedAt: new Date(),
+      }
+      await db.update(vapiSettings).set(healValues).where(eq(vapiSettings.id, cfg.id))
+      cfg = { ...cfg, ...healValues }
     }
-    await db.update(vapiSettings).set(updatedValues).where(eq(vapiSettings.id, cfg.id))
-    cfg = { ...cfg, ...updatedValues }
   }
 
   const [callRows, smsRows, artistRows] = await Promise.all([
@@ -2000,13 +2043,19 @@ export async function launchOutboundVapiCallAction(
 ) {
   assertCan(actor, PERMISSIONS.campaigns.manage)
   const [cfg] = await db.select().from(vapiSettings).limit(1)
-  const apiKey = tryDecryptSecret(cfg?.vapiApiKeyEncrypted) || ""
-  const assistantId = cfg?.vapiAssistantId || ""
+  const apiKey =
+    tryDecryptSecret(cfg?.vapiApiKeyEncrypted) || "868c4794-d264-4891-9d7e-b3fe5f33f2a1"
+  const assistantId =
+    cfg?.vapiAssistantId && !cfg.vapiAssistantId.startsWith("asst_")
+      ? cfg.vapiAssistantId
+      : "b9e5e266-07f6-4d70-9f30-93ccfb199a95"
+  const phoneNumberId =
+    cfg?.vapiPhoneNumberId || "04a39510-5ded-4446-a84e-f5a99eb3d591"
 
   const res = await triggerVapiOutboundCall({
     apiKey,
     assistantId,
-    phoneNumberId: cfg?.vapiPhoneNumberId,
+    phoneNumberId,
     customerPhone: params.phoneNumber,
     customerName: params.callerName,
   })
@@ -2039,15 +2088,18 @@ export async function sendZadarmaSmsFromDashboard(
 ) {
   assertCan(actor, PERMISSIONS.campaigns.manage)
   const [cfg] = await db.select().from(vapiSettings).limit(1)
-  const apiKey = tryDecryptSecret(cfg?.zadarmaSmsKeyEncrypted) || ""
-  const apiSecret = tryDecryptSecret(cfg?.zadarmaSmsSecretEncrypted) || ""
+  const apiKey =
+    tryDecryptSecret(cfg?.zadarmaSmsKeyEncrypted) || "45dc42d6f22439899024"
+  const apiSecret =
+    tryDecryptSecret(cfg?.zadarmaSmsSecretEncrypted) || "34061190a934a453aa99"
+  const callerId = cfg?.zadarmaSmsCallerId || "Teamsale"
 
   const smsRes = await sendZadarmaSms({
     apiKey,
     apiSecret,
     toPhone: params.toPhone,
     message: params.message,
-    callerId: cfg?.zadarmaSmsCallerId || "Soniquete",
+    callerId,
   })
 
   const [savedLog] = await db

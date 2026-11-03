@@ -632,14 +632,15 @@ export async function seedFlamencoInitialData(tx: Executor, now: Date = new Date
     if (existingVapi.length === 0) {
       await tx.insert(vapiSettings).values({
         vapiEnabled: true,
-        vapiAssistantId: "asst_soniquete_flamenco_madrid",
-        vapiPhoneNumberId: "ph_zadarma_sip_madrid",
+        vapiApiKeyEncrypted: encryptSecret("868c4794-d264-4891-9d7e-b3fe5f33f2a1"),
+        vapiAssistantId: "b9e5e266-07f6-4d70-9f30-93ccfb199a95",
+        vapiPhoneNumberId: "04a39510-5ded-4446-a84e-f5a99eb3d591",
         zadarmaPhoneNumber: "+34919933764",
         zadarmaSipServer: "sip.zadarma.com",
         zadarmaSipLogin: "536586",
         zadarmaSipPasswordEncrypted: encryptSecret("PddEcd72ZQ"),
         voiceProvider: "11labs",
-        voiceId: "791d5162-d5eb-40f0-8189-f19db44611d8",
+        voiceId: "21m00Tcm4TlvDq8ikWAM",
         transcriberProvider: "deepgram",
         transcriberModel: "nova-3-general",
         transcriberLanguage: "es",
@@ -649,7 +650,7 @@ export async function seedFlamencoInitialData(tx: Executor, now: Date = new Date
         n8nSmsWebhookUrl: "https://n8n.soniqueteflamenco.com/webhook/zadarma-sms",
         zadarmaSmsKeyEncrypted: encryptSecret("45dc42d6f22439899024"),
         zadarmaSmsSecretEncrypted: encryptSecret("34061190a934a453aa99"),
-        zadarmaSmsCallerId: "+34919933764",
+        zadarmaSmsCallerId: "Teamsale",
         autoSendBookingSms: true,
       })
     }

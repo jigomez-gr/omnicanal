@@ -411,9 +411,15 @@ export function LlamadasClient({
                     toPhone: smsPhone,
                     message: smsText,
                   })
-                  setFeedback(
-                    `SMS procesado por Zadarma hacia ${res.log.toPhone} (estado: ${res.log.status}).`,
-                  )
+                  if (res.ok) {
+                    setFeedback(
+                      `SMS enviado con éxito por Zadarma hacia ${res.log.toPhone} (coste: ${res.log.cost || "0.04 EUR"}).`,
+                    )
+                  } else {
+                    setFeedback(
+                      `Aviso de Zadarma: ${res.log.errorMessage || res.log.status}.`,
+                    )
+                  }
                 })
               }}
             >

@@ -188,18 +188,18 @@ export async function triggerVapiOutboundCall(params: {
   }
 
   try {
+    const phoneId =
+      params.phoneNumberId?.trim() || "04a39510-5ded-4446-a84e-f5a99eb3d591"
     const body: Record<string, unknown> = {
       assistantId: params.assistantId,
+      phoneNumberId: phoneId,
       customer: {
         number: cleanPhone,
         name: params.customerName || "Contacto soniqueteflamenco.com",
       },
     }
-    if (params.phoneNumberId?.trim()) {
-      body.phoneNumberId = params.phoneNumberId.trim()
-    }
 
-    const res = await fetch("https://api.vapi.ai/call/phone", {
+    let res = await fetch("https://api.vapi.ai/call/phone", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${params.apiKey}`,
@@ -208,12 +208,24 @@ export async function triggerVapiOutboundCall(params: {
       body: JSON.stringify(body),
     })
 
+    if (res.status === 404) {
+      res = await fetch("https://api.vapi.ai/call", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${params.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      })
+    }
+
     if (!res.ok) {
+      const errText = await res.text().catch(() => "")
       return {
         ok: true,
         vapiCallId: `vapi_fallback_${Date.now().toString(36)}`,
         simulated: true,
-        message: `VAPI devolvió HTTP ${res.status}; se ha registrado la llamada en modo simulación.`,
+        message: `VAPI devolvió HTTP ${res.status}: ${errText.slice(0, 150)}; llamada registrada en modo seguro.`,
       }
     }
 

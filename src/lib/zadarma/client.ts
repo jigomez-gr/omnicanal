@@ -4,10 +4,9 @@ import { createHash, createHmac } from "node:crypto"
  * Codificación RFC 3986 idéntica a rawurlencode de PHP, requerida por Zadarma API v1.
  */
 export function rfc3986Encode(str: string): string {
-  return encodeURIComponent(str).replace(
-    /[!'()*]/g,
-    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
-  )
+  return encodeURIComponent(str)
+    .replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)
+    .replace(/%20/g, "+")
 }
 
 /**
@@ -91,8 +90,9 @@ export async function sendZadarmaSms(
     number: cleanPhone,
     message: sanitizedMessage,
   }
-  if (input.callerId?.trim()) {
-    queryParams.caller_id = input.callerId.trim()
+  const effectiveSender = input.callerId?.trim() || "Teamsale"
+  if (effectiveSender && effectiveSender !== "none") {
+    queryParams.sender = effectiveSender
   }
 
   if (!input.apiKey || !input.apiSecret) {
