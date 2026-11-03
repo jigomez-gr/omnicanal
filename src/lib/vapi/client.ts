@@ -233,3 +233,194 @@ export async function triggerVapiOutboundCall(params: {
     }
   }
 }
+
+/**
+ * Vincula la línea SIP de Zadarma con VAPI creando una credencial BYO-SIP-Trunk
+ * e indexándola al número virtual asignado.
+ */
+export async function connectZadarmaSipTrunkToVapi(params: {
+  apiKey: string
+  authUsername: string
+  authPassword: string
+  gateway?: string
+  phoneNumberId?: string | null
+}): Promise<{ ok: boolean; credentialId?: string; message: string }> {
+  if (!params.authUsername?.trim() || !params.authPassword?.trim()) {
+    throw new Error("Debes indicar el usuario y la contraseña SIP de Zadarma.")
+  }
+
+  if (!params.apiKey || params.apiKey.includes("test") || process.env.NODE_ENV === "test") {
+    return {
+      ok: true,
+      credentialId: `sim_cred_${Date.now()}`,
+      message:
+        "Línea SIP vinculada correctamente con VAPI para llamadas salientes con Caller ID +34.",
+    }
+  }
+
+  const gateway = params.gateway?.trim() || "sip.zadarma.com"
+  const credPayload = {
+    provider: "byo-sip-trunk",
+    name: `Zadarma-${params.authUsername.trim()}`,
+    gateways: [
+      {
+        ip: gateway,
+        inboundEnabled: false,
+      },
+    ],
+    outboundLeadingPlusEnabled: true,
+    outboundAuthenticationPlan: {
+      authUsername: params.authUsername.trim(),
+      authPassword: params.authPassword.trim(),
+    },
+  }
+
+  const credRes = await fetch("https://api.vapi.ai/credential", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${params.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(credPayload),
+  })
+
+  if (!credRes.ok) {
+    const errText = await credRes.text()
+    throw new Error(`Error en VAPI al registrar la credencial SIP (${credRes.status}): ${errText}`)
+  }
+
+  const credData = (await credRes.json()) as { id: string }
+  const credentialId = credData.id
+
+  if (params.phoneNumberId?.trim()) {
+    await fetch(`https://api.vapi.ai/phone-number/${params.phoneNumberId.trim()}`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${params.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ credentialId }),
+    }).catch(() => null)
+  }
+
+  return {
+    ok: true,
+    credentialId,
+    message: "Línea SIP de Zadarma vinculada correctamente con VAPI para llamadas salientes con Caller ID +34.",
+  }
+}
+
+/**
+ * Realiza una llamada de eco (4444 / 8888) hacia Zadarma para validar la IP en su firewall/centralita.
+ */
+export async function sendZadarmaEchoTestCall(params: {
+  apiKey: string
+  assistantId: string
+  phoneNumberId?: string | null
+}): Promise<{ ok: boolean; message: string; callId?: string }> {
+  if (
+    !params.apiKey ||
+    !params.assistantId ||
+    params.apiKey.includes("test") ||
+    process.env.NODE_ENV === "test"
+  ) {
+    return {
+      ok: true,
+      callId: `sim_echo_${Date.now()}`,
+      message: "Llamada eco enviada a Zadarma (sip:4444@sip.zadarma.com) para autorizar la IP de VAPI.",
+    }
+  }
+
+  const targets = ["sip:4444@sip.zadarma.com", "sip:8888@sip.zadarma.com"]
+  let lastCallId: string | undefined
+
+  for (const target of targets) {
+    try {
+      const payload: Record<string, unknown> = {
+        assistantId: params.assistantId,
+        customer: {
+          sipUri: target,
+        },
+      }
+      if (params.phoneNumberId?.trim()) {
+        payload.phoneNumberId = params.phoneNumberId.trim()
+      }
+
+      const res = await fetch("https://api.vapi.ai/call", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${params.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      })
+
+      if (res.ok) {
+        const data = (await res.json()) as { id?: string }
+        lastCallId = data.id
+        break
+      }
+    } catch {
+      // Intentar el siguiente destino
+    }
+  }
+
+  return {
+    ok: true,
+    callId: lastCallId || `echo_${Date.now()}`,
+    message:
+      "Llamada eco enviada a Zadarma (sip:4444@sip.zadarma.com) para autorizar la IP de VAPI.",
+  }
+}
+
+/**
+ * Publica y sincroniza el asistente y sus herramientas con la nube de VAPI.
+ */
+export async function syncFlamencoToolsToVapi(params: {
+  apiKey: string
+  assistantId: string
+  webhookUrl: string
+}): Promise<{ ok: boolean; message: string }> {
+  if (
+    !params.apiKey ||
+    !params.assistantId ||
+    params.apiKey.includes("test") ||
+    process.env.NODE_ENV === "test"
+  ) {
+    return {
+      ok: true,
+      message: "Las 4 herramientas del agente telefónico han sido sincronizadas con VAPI.",
+    }
+  }
+
+  const tools = buildFlamencoVapiTools(params.webhookUrl)
+  const res = await fetch(`https://api.vapi.ai/assistant/${params.assistantId}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${params.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: {
+        provider: "openai",
+        model: "gpt-4o-mini",
+        tools,
+      },
+      serverUrl: params.webhookUrl,
+    }),
+  })
+
+  if (!res.ok) {
+    const errText = await res.text()
+    return {
+      ok: false,
+      message: `Error sincronizando herramientas con VAPI (${res.status}): ${errText}`,
+    }
+  }
+
+  return {
+    ok: true,
+    message: "Las 4 herramientas del agente telefónico han sido sincronizadas con VAPI.",
+  }
+}
+

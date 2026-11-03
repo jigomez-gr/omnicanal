@@ -45,6 +45,9 @@ import { PERMISSIONS, type Actor } from "@/lib/permissions"
 import { createStripeCheckoutSession } from "@/lib/stripe/client"
 import {
   composeFlamencoVapiPrompt,
+  connectZadarmaSipTrunkToVapi,
+  sendZadarmaEchoTestCall,
+  syncFlamencoToolsToVapi,
   triggerVapiOutboundCall,
 } from "@/lib/vapi/client"
 import { sendZadarmaSms } from "@/lib/zadarma/client"
@@ -322,13 +325,14 @@ const updateVapiConfigSchema = z.object({
   vapiApiKey: z.string().trim().max(300).optional().nullable(),
   vapiAssistantId: z.string().trim().max(160).optional().nullable(),
   vapiPhoneNumberId: z.string().trim().max(160).optional().nullable(),
-  zadarmaPhoneNumber: z.string().trim().max(60).default("+34919931525"),
+  zadarmaPhoneNumber: z.string().trim().max(60).default("+34919933764"),
   zadarmaSipServer: z.string().trim().max(120).default("sip.zadarma.com"),
-  zadarmaSipLogin: z.string().trim().max(120).optional().nullable(),
+  zadarmaSipLogin: z.string().trim().max(120).default("536586"),
+  zadarmaSipPassword: z.string().trim().max(100).optional().nullable(),
   voiceProvider: z.string().trim().max(60).default("11labs"),
   voiceId: z.string().trim().max(120).default("791d5162-d5eb-40f0-8189-f19db44611d8"),
   transcriberProvider: z.string().trim().max(60).default("deepgram"),
-  transcriberModel: z.string().trim().max(60).default("nova-2"),
+  transcriberModel: z.string().trim().max(60).default("nova-3-general"),
   transcriberLanguage: z.string().trim().max(20).default("es"),
   llmModel: z.string().trim().max(100).default("gpt-4o-mini"),
   temperature: z.string().trim().max(10).default("0.3"),
@@ -336,7 +340,7 @@ const updateVapiConfigSchema = z.object({
   n8nSmsWebhookUrl: z.string().trim().max(300).optional().nullable(),
   zadarmaSmsKey: z.string().trim().max(300).optional().nullable(),
   zadarmaSmsSecret: z.string().trim().max(300).optional().nullable(),
-  zadarmaSmsCallerId: z.string().trim().max(40).default("Soniquete"),
+  zadarmaSmsCallerId: z.string().trim().max(40).default("+34919933764"),
   autoSendBookingSms: z.boolean().default(true),
 })
 
@@ -1836,7 +1840,30 @@ export async function markPaymentRecordPaid(actor: Actor, paymentId: string) {
 
 export async function getVapiAndCallsDashboard(actor: Actor) {
   assertCan(actor, PERMISSIONS.campaigns.view)
-  const [cfg] = await db.select().from(vapiSettings).limit(1)
+  let [cfg] = await db.select().from(vapiSettings).limit(1)
+
+  // Auto-upgrade / self-heal outdated phone, login, SIP password or SMS keys
+  if (
+    cfg &&
+    (cfg.zadarmaPhoneNumber !== "+34919933764" ||
+      cfg.zadarmaSipLogin !== "536586" ||
+      cfg.zadarmaSmsCallerId !== "+34919933764" ||
+      !cfg.zadarmaSipPasswordEncrypted ||
+      !cfg.zadarmaSmsKeyEncrypted)
+  ) {
+    const updatedValues = {
+      zadarmaPhoneNumber: "+34919933764",
+      zadarmaSipLogin: "536586",
+      zadarmaSipPasswordEncrypted: cfg.zadarmaSipPasswordEncrypted || encryptSecret("PddEcd72ZQ"),
+      zadarmaSmsKeyEncrypted: cfg.zadarmaSmsKeyEncrypted || encryptSecret("45dc42d6f22439899024"),
+      zadarmaSmsSecretEncrypted: cfg.zadarmaSmsSecretEncrypted || encryptSecret("34061190a934a453aa99"),
+      zadarmaSmsCallerId: "+34919933764",
+      updatedAt: new Date(),
+    }
+    await db.update(vapiSettings).set(updatedValues).where(eq(vapiSettings.id, cfg.id))
+    cfg = { ...cfg, ...updatedValues }
+  }
+
   const [callRows, smsRows, artistRows] = await Promise.all([
     db.select().from(calls).orderBy(desc(calls.startedAt)).limit(100),
     db
@@ -1870,13 +1897,13 @@ export async function getVapiAndCallsDashboard(actor: Actor) {
       maskedVapiApiKey: vapiApiKey ? maskSecret(vapiApiKey) : null,
       vapiAssistantId: cfg?.vapiAssistantId || "asst_soniquete_flamenco_madrid",
       vapiPhoneNumberId: cfg?.vapiPhoneNumberId || "ph_zadarma_sip_madrid",
-      zadarmaPhoneNumber: cfg?.zadarmaPhoneNumber || "+34919931525",
+      zadarmaPhoneNumber: cfg?.zadarmaPhoneNumber || "+34919933764",
       zadarmaSipServer: cfg?.zadarmaSipServer || "sip.zadarma.com",
-      zadarmaSipLogin: cfg?.zadarmaSipLogin || "633610",
+      zadarmaSipLogin: cfg?.zadarmaSipLogin || "536586",
       voiceProvider: cfg?.voiceProvider || "11labs",
       voiceId: cfg?.voiceId || "791d5162-d5eb-40f0-8189-f19db44611d8",
       transcriberProvider: cfg?.transcriberProvider || "deepgram",
-      transcriberModel: cfg?.transcriberModel || "nova-2",
+      transcriberModel: cfg?.transcriberModel || "nova-3-general",
       transcriberLanguage: cfg?.transcriberLanguage || "es",
       llmModel: cfg?.llmModel || "gpt-4o-mini",
       temperature: cfg?.temperature || "0.3",
@@ -1887,7 +1914,7 @@ export async function getVapiAndCallsDashboard(actor: Actor) {
       maskedZadarmaSmsKey: smsKey ? maskSecret(smsKey) : null,
       hasZadarmaSmsSecret: Boolean(smsSecret),
       maskedZadarmaSmsSecret: smsSecret ? maskSecret(smsSecret) : null,
-      zadarmaSmsCallerId: cfg?.zadarmaSmsCallerId || "Soniquete",
+      zadarmaSmsCallerId: cfg?.zadarmaSmsCallerId || "+34919933764",
       autoSendBookingSms: cfg?.autoSendBookingSms ?? true,
       webhookUrl: `${appUrl}/api/webhooks/vapi`,
       outboundApiUrl: `${appUrl}/api/vapi/outbound`,
@@ -2026,3 +2053,52 @@ export async function sendZadarmaSmsFromDashboard(
     log: savedLog,
   }
 }
+
+export async function connectZadarmaSipTrunkAction(
+  actor: Actor,
+  params: { authUsername?: string; authPassword?: string; gateway?: string },
+) {
+  assertCan(actor, PERMISSIONS.settings.integrations)
+  const [cfg] = await db.select().from(vapiSettings).limit(1)
+  const apiKey = tryDecryptSecret(cfg?.vapiApiKeyEncrypted) || ""
+  const password =
+    params.authPassword?.trim() ||
+    tryDecryptSecret(cfg?.zadarmaSipPasswordEncrypted) ||
+    "PddEcd72ZQ"
+
+  return connectZadarmaSipTrunkToVapi({
+    apiKey,
+    authUsername: params.authUsername || cfg?.zadarmaSipLogin || "536586",
+    authPassword: password,
+    gateway: params.gateway || cfg?.zadarmaSipServer || "sip.zadarma.com",
+    phoneNumberId: cfg?.vapiPhoneNumberId,
+  })
+}
+
+export async function sendZadarmaEchoTestCallAction(actor: Actor) {
+  assertCan(actor, PERMISSIONS.settings.integrations)
+  const [cfg] = await db.select().from(vapiSettings).limit(1)
+  const apiKey = tryDecryptSecret(cfg?.vapiApiKeyEncrypted) || ""
+  const assistantId = cfg?.vapiAssistantId || ""
+
+  return sendZadarmaEchoTestCall({
+    apiKey,
+    assistantId,
+    phoneNumberId: cfg?.vapiPhoneNumberId,
+  })
+}
+
+export async function syncFlamencoToolsAction(actor: Actor) {
+  assertCan(actor, PERMISSIONS.settings.integrations)
+  const [cfg] = await db.select().from(vapiSettings).limit(1)
+  const apiKey = tryDecryptSecret(cfg?.vapiApiKeyEncrypted) || ""
+  const assistantId = cfg?.vapiAssistantId || ""
+  const appUrl = getAppUrl()
+
+  return syncFlamencoToolsToVapi({
+    apiKey,
+    assistantId,
+    webhookUrl: `${appUrl}/api/webhooks/vapi`,
+  })
+}
+

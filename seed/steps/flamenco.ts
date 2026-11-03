@@ -21,6 +21,7 @@ import {
   FLAMENCO_MEDIA_PIECES,
 } from "@/lib/flamenco/catalog"
 import { composeFlamencoVapiPrompt } from "@/lib/vapi/client"
+import { encryptSecret } from "@/server/crypto"
 import type { SeedStep } from "../types"
 
 function buildMediaPackRows(params: {
@@ -633,19 +634,22 @@ export async function seedFlamencoInitialData(tx: Executor, now: Date = new Date
         vapiEnabled: true,
         vapiAssistantId: "asst_soniquete_flamenco_madrid",
         vapiPhoneNumberId: "ph_zadarma_sip_madrid",
-        zadarmaPhoneNumber: "+34919931525",
+        zadarmaPhoneNumber: "+34919933764",
         zadarmaSipServer: "sip.zadarma.com",
-        zadarmaSipLogin: "633610",
+        zadarmaSipLogin: "536586",
+        zadarmaSipPasswordEncrypted: encryptSecret("PddEcd72ZQ"),
         voiceProvider: "11labs",
         voiceId: "791d5162-d5eb-40f0-8189-f19db44611d8",
         transcriberProvider: "deepgram",
-        transcriberModel: "nova-2",
+        transcriberModel: "nova-3-general",
         transcriberLanguage: "es",
         llmModel: "gpt-4o-mini",
         temperature: "0.3",
         systemPrompt: composeFlamencoVapiPrompt({}),
         n8nSmsWebhookUrl: "https://n8n.soniqueteflamenco.com/webhook/zadarma-sms",
-        zadarmaSmsCallerId: "Soniquete",
+        zadarmaSmsKeyEncrypted: encryptSecret("45dc42d6f22439899024"),
+        zadarmaSmsSecretEncrypted: encryptSecret("34061190a934a453aa99"),
+        zadarmaSmsCallerId: "+34919933764",
         autoSendBookingSms: true,
       })
     }
@@ -691,8 +695,8 @@ export async function seedFlamencoInitialData(tx: Executor, now: Date = new Date
 
     await tx.insert(zadarmaSmsRespuesta).values([
       {
-        toPhone: "34611222333",
-        callerId: "Soniquete",
+        toPhone: "34919933764",
+        callerId: "+34919933764",
         message:
           "Soniquete con Arte: Confirmada tu reunion de contratacion para Sala Villanos el jueves a las 11:00h. Detalles enviados a tu correo.",
         status: "success",

@@ -78,6 +78,13 @@
       "when": 1793613830439,
       "tag": "0010_flamenco_vapi_calcom_stripe",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793700000000,
+      "tag": "0011_vapi_sip_password",
+      "breakpoints": true
     }
   ]
 }

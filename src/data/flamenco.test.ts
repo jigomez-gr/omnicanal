@@ -11,6 +11,7 @@ import { createBusiness, createUser, type TestUser } from "@/test/factories"
 import {
   configureHostingerDomainEmail,
   confirmEventProvisionalBooking,
+  connectZadarmaSipTrunkAction,
   createArtistDigitalService,
   createEventProvisionalBooking,
   createFlamencoArtist,
@@ -25,8 +26,10 @@ import {
   getVapiAndCallsDashboard,
   notifyProvisionalBookingsToConfirm,
   scrapeWebEntityForFlamenco,
+  sendZadarmaEchoTestCallAction,
   sendZadarmaSmsFromDashboard,
   simulateAndScheduleConcertOffer,
+  syncFlamencoToolsAction,
   updateCalcomConfig,
   updatePaymentConfig,
   updateVapiAndZadarmaConfig,
@@ -263,6 +266,20 @@ describe("Agencia de Promoción Flamenca, Cal.com, Stripe y VAPI/Zadarma", () =>
     })
     expect(smsRes.log.toPhone).toBe("34611223344")
     expect(smsRes.log.message).not.toContain("https://")
+
+    // Vinculación de SIP Trunk y validación eco en modo simulación
+    const sipRes = await connectZadarmaSipTrunkAction(owner.actor, {
+      authUsername: "536586",
+      authPassword: "sip_test_password",
+      gateway: "sip.zadarma.com",
+    })
+    expect(sipRes.ok).toBe(true)
+
+    const echoRes = await sendZadarmaEchoTestCallAction(owner.actor)
+    expect(echoRes.ok).toBe(true)
+
+    const toolsRes = await syncFlamencoToolsAction(owner.actor)
+    expect(toolsRes.ok).toBe(true)
 
     // Verificación de firma de webhook de Stripe
     const rawBody = JSON.stringify({ type: "checkout.session.completed" })

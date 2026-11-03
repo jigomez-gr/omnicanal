@@ -23,8 +23,11 @@ import { Textarea } from "@/components/ui/textarea"
 import type { getVapiAndCallsDashboard } from "@/data/flamenco"
 import { VAPI_SPANISH_VOICES } from "@/lib/vapi/client"
 import {
+  connectZadarmaSipTrunkServerAction,
   saveVapiZadarmaSettingsAction,
+  sendZadarmaEchoTestServerAction,
   sendZadarmaSmsServerAction,
+  syncFlamencoToolsServerAction,
   triggerOutboundCallServerAction,
 } from "../actions"
 
@@ -49,11 +52,11 @@ export function LlamadasClient({
   )
 
   // Estados llamada saliente
-  const [testCallPhone, setTestCallPhone] = useState("+34 600 123 456")
+  const [testCallPhone, setTestCallPhone] = useState("+34919933764")
   const [testCallName, setTestCallName] = useState("Programador Tablao / Sala")
 
   // Estados envío SMS Zadarma directo
-  const [smsPhone, setSmsPhone] = useState("+34 600 123 456")
+  const [smsPhone, setSmsPhone] = useState("+34919933764")
   const [smsText, setSmsText] = useState(
     "Soniquete con Arte: Confirmada nuestra reunion de contratacion artistica. Te hemos enviado el dossier y videos a tu correo.",
   )
@@ -75,12 +78,17 @@ export function LlamadasClient({
   const [temperature] = useState(data.config.temperature)
   const [systemPrompt, setSystemPrompt] = useState(data.config.systemPrompt)
   const [n8nSmsWebhookUrl, setN8nSmsWebhookUrl] = useState(data.config.n8nSmsWebhookUrl)
-  const [zadarmaSmsKey, setZadarmaSmsKey] = useState(data.config.maskedZadarmaSmsKey ?? "")
-  const [zadarmaSmsSecret, setZadarmaSmsSecret] = useState(
-    data.config.maskedZadarmaSmsSecret ?? "",
+  const [zadarmaSmsKey, setZadarmaSmsKey] = useState(
+    data.config.maskedZadarmaSmsKey ?? "45dc42d6f22439899024",
   )
-  const [zadarmaSmsCallerId, setZadarmaSmsCallerId] = useState(data.config.zadarmaSmsCallerId)
+  const [zadarmaSmsSecret, setZadarmaSmsSecret] = useState(
+    data.config.maskedZadarmaSmsSecret ?? "34061190a934a453aa99",
+  )
+  const [zadarmaSmsCallerId, setZadarmaSmsCallerId] = useState(
+    data.config.zadarmaSmsCallerId || "+34919933764",
+  )
   const [autoSendBookingSms, setAutoSendBookingSms] = useState(data.config.autoSendBookingSms)
+  const [zadarmaSipPassword, setZadarmaSipPassword] = useState("PddEcd72ZQ")
 
   const selectedCall = data.calls.find((c) => c.id === selectedCallId) ?? data.calls[0]
 
@@ -169,7 +177,7 @@ export function LlamadasClient({
                     required
                     value={testCallPhone}
                     onChange={(e) => setTestCallPhone(e.target.value)}
-                    placeholder="+34 600 000 000"
+                    placeholder="+34919933764"
                   />
                   <Button type="submit" disabled={isPending}>
                     <PhoneOutgoing className="mr-1.5 size-4" />
@@ -415,7 +423,7 @@ export function LlamadasClient({
                   required
                   value={smsPhone}
                   onChange={(e) => setSmsPhone(e.target.value)}
-                  placeholder="+34 600 123 456"
+                  placeholder="+34919933764"
                 />
               </div>
               <div>
@@ -547,11 +555,11 @@ export function LlamadasClient({
 
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <Label>Número de Teléfono (Zadarma)</Label>
+                <Label>Número Telefónico Virtual (Zadarma E.164)</Label>
                 <Input
                   value={zadarmaPhoneNumber}
                   onChange={(e) => setZadarmaPhoneNumber(e.target.value)}
-                  placeholder="+34919931525"
+                  placeholder="+34919933764"
                 />
               </div>
               <div>
@@ -570,6 +578,97 @@ export function LlamadasClient({
                     Copiar
                   </Button>
                 </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 pt-1">
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={isPending}
+                onClick={() => {
+                  startTransition(async () => {
+                    const res = await syncFlamencoToolsServerAction()
+                    setFeedback(res.message)
+                  })
+                }}
+              >
+                Sincronizar Herramientas en VAPI
+              </Button>
+            </div>
+
+            {/* SECCIÓN LÍNEA SALIENTE DE ZADARMA (CALLER ID +34) IDÉNTICA A CRM_SALVADORA */}
+            <div className="rounded-xl border bg-muted/30 p-4">
+              <div className="mb-2 flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-bold">
+                    Línea Saliente de Zadarma (Caller ID +34)
+                  </h4>
+                  <p className="text-xs text-muted-foreground">
+                    Para que las llamadas salientes no muestren el número internacional (+44) y salgan a través de tu cuenta de Zadarma con tu número {zadarmaPhoneNumber || "+34919933764"}, introduce aquí la contraseña de tu SIP de Zadarma.
+                  </p>
+                </div>
+                <Badge variant="outline" className="text-emerald-600 dark:text-emerald-400">
+                  Emite con tu número español
+                </Badge>
+              </div>
+
+              <div className="grid gap-3 pt-2 md:grid-cols-3">
+                <div>
+                  <Label>Servidor SIP</Label>
+                  <Input value={zadarmaSipServer} readOnly />
+                </div>
+                <div>
+                  <Label>Usuario / Login SIP (Zadarma)</Label>
+                  <Input value={zadarmaSipLogin || "536586"} readOnly />
+                </div>
+                <div>
+                  <Label>Contraseña SIP</Label>
+                  <Input
+                    type="password"
+                    placeholder="Contraseña de tu SIP"
+                    value={zadarmaSipPassword}
+                    onChange={(e) => setZadarmaSipPassword(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isPending}
+                  onClick={() => {
+                    startTransition(async () => {
+                      const res = await sendZadarmaEchoTestServerAction()
+                      setFeedback(res.message)
+                    })
+                  }}
+                >
+                  Validar IP en Zadarma (Llamada Eco 4444 / 8888)
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={isPending}
+                  onClick={() => {
+                    if (!zadarmaSipPassword.trim()) {
+                      setFeedback("Por favor introduce la contraseña de tu cuenta SIP de Zadarma.")
+                      return
+                    }
+                    startTransition(async () => {
+                      const res = await connectZadarmaSipTrunkServerAction({
+                        authUsername: zadarmaSipLogin || "536586",
+                        authPassword: zadarmaSipPassword.trim(),
+                        gateway: zadarmaSipServer,
+                      })
+                      setFeedback(res.message)
+                    })
+                  }}
+                >
+                  Vincular Línea Zadarma con VAPI
+                </Button>
               </div>
             </div>
 
