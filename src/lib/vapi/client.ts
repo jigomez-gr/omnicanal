@@ -455,3 +455,79 @@ export async function syncFlamencoToolsToVapi(params: {
   }
 }
 
+export interface VapiCallPayload {
+  id: string
+  status?: string
+  startedAt?: string
+  endedAt?: string
+  duration?: number
+  durationSeconds?: number
+  cost?: number
+  recordingUrl?: string
+  stereoRecordingUrl?: string
+  artifact?: {
+    recordingUrl?: string
+    stereoRecordingUrl?: string
+    transcript?: string
+    summary?: string
+    messages?: Array<{ role?: string; message?: string; content?: string }>
+  }
+  analysis?: {
+    summary?: string
+  }
+  transcript?: string
+  summary?: string
+  customer?: {
+    number?: string
+    name?: string
+  }
+  phoneNumber?: {
+    number?: string
+  }
+  type?: string
+}
+
+/**
+ * Consulta los datos actualizados de una llamada específica en VAPI (grabación, coste, transcripción).
+ */
+export async function fetchVapiCall(
+  apiKey: string,
+  callId: string,
+): Promise<VapiCallPayload | null> {
+  if (!apiKey || apiKey.includes("test") || process.env.NODE_ENV === "test") {
+    return null
+  }
+  try {
+    const res = await fetch(`https://api.vapi.ai/call/${callId}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    })
+    if (!res.ok) return null
+    return (await res.json()) as VapiCallPayload
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Lista las llamadas recientes desde la cuenta de VAPI para importar grabaciones y costes.
+ */
+export async function fetchRecentVapiCalls(
+  apiKey: string,
+  limit = 50,
+): Promise<VapiCallPayload[]> {
+  if (!apiKey || apiKey.includes("test") || process.env.NODE_ENV === "test") {
+    return []
+  }
+  try {
+    const res = await fetch(`https://api.vapi.ai/call?limit=${limit}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    })
+    if (!res.ok) return []
+    const data = await res.json()
+    return Array.isArray(data) ? (data as VapiCallPayload[]) : []
+  } catch {
+    return []
+  }
+}
+
+

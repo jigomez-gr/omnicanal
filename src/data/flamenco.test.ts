@@ -29,7 +29,9 @@ import {
   sendZadarmaEchoTestCallAction,
   sendZadarmaSmsFromDashboard,
   simulateAndScheduleConcertOffer,
+  syncCallsFromVapi,
   syncFlamencoToolsAction,
+  toggleCallReview,
   updateCalcomConfig,
   updatePaymentConfig,
   updateVapiAndZadarmaConfig,
@@ -449,5 +451,33 @@ describe("Agencia de Promoción Flamenca, Cal.com, Stripe y VAPI/Zadarma", () =>
     })
     expect(configuredMailbox.hasSecrets).toBe(true)
     expect(configuredMailbox.status).toBe("connected")
+
+    // 8. VAPI Dashboard con estadísticas KPI, filtros y marcado de consulta/revisión
+    const vapiDash = await getVapiAndCallsDashboard(viewer.actor)
+    expect(vapiDash.stats).toBeDefined()
+    expect(typeof vapiDash.stats.totalCalls).toBe("number")
+    expect(typeof vapiDash.stats.needsReviewCount).toBe("number")
+    expect(typeof vapiDash.stats.totalDurationSeconds).toBe("number")
+    expect(typeof vapiDash.stats.totalCostCents).toBe("number")
+
+    if (vapiDash.calls.length > 0) {
+      const firstCall = vapiDash.calls[0]
+      const marked = await toggleCallReview(owner.actor, {
+        callId: firstCall.id,
+        isConsulted: true,
+        needsReview: false,
+      })
+      expect(marked.isConsulted).toBe(true)
+      expect(marked.needsReview).toBe(false)
+
+      const reviewReq = await toggleCallReview(owner.actor, {
+        callId: firstCall.id,
+        needsReview: true,
+      })
+      expect(reviewReq.needsReview).toBe(true)
+    }
+
+    const syncRes = await syncCallsFromVapi(owner.actor)
+    expect(syncRes.ok).toBe(true)
   })
 })

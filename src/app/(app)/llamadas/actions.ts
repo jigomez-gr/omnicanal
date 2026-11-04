@@ -6,7 +6,9 @@ import {
   launchOutboundVapiCallAction,
   sendZadarmaEchoTestCallAction,
   sendZadarmaSmsFromDashboard,
+  syncCallsFromVapi,
   syncFlamencoToolsAction,
+  toggleCallReview,
   updateVapiAndZadarmaConfig,
 } from "@/data/flamenco"
 import { requireActor } from "@/server/session"
@@ -64,4 +66,23 @@ export async function syncFlamencoToolsServerAction() {
   revalidatePath("/llamadas")
   return res
 }
+
+export async function syncVapiCallsServerAction() {
+  const actor = await requireActor()
+  const res = await syncCallsFromVapi(actor)
+  revalidatePath("/llamadas")
+  return res
+}
+
+export async function toggleCallReviewServerAction(input: {
+  callId: string
+  needsReview?: boolean
+  isConsulted?: boolean
+}) {
+  const actor = await requireActor()
+  const res = await toggleCallReview(actor, input)
+  revalidatePath("/llamadas")
+  return res
+}
+
 

@@ -47,6 +47,8 @@ import { createStripeCheckoutSession } from "@/lib/stripe/client"
 import {
   composeFlamencoVapiPrompt,
   connectZadarmaSipTrunkToVapi,
+  fetchRecentVapiCalls,
+  fetchVapiCall,
   sendZadarmaEchoTestCall,
   syncFlamencoToolsToVapi,
   triggerVapiOutboundCall,
@@ -1984,6 +1986,12 @@ export async function getVapiAndCallsDashboard(actor: Actor) {
       webhookUrl: `${appUrl}/api/webhooks/vapi`,
       outboundApiUrl: `${appUrl}/api/vapi/outbound`,
     },
+    stats: {
+      totalCalls: callRows.length,
+      needsReviewCount: callRows.filter((c) => c.needsReview || !c.isConsulted).length,
+      totalDurationSeconds: callRows.reduce((acc, c) => acc + (c.durationSeconds || 0), 0),
+      totalCostCents: callRows.reduce((acc, c) => acc + (c.costCents || 0), 0),
+    },
     calls: callRows,
     smsLogs: smsRows,
   }
@@ -2175,4 +2183,167 @@ export async function syncFlamencoToolsAction(actor: Actor) {
     webhookUrl: `${appUrl}/api/webhooks/vapi`,
   })
 }
+
+/**
+ * Sincroniza llamadas, grabaciones, transcripciones y costes reales desde la API de VAPI.
+ */
+export async function syncCallsFromVapi(actor: Actor) {
+  assertCan(actor, PERMISSIONS.campaigns.manage)
+  const [cfg] = await db.select().from(vapiSettings).limit(1)
+  const apiKey =
+    tryDecryptSecret(cfg?.vapiApiKeyEncrypted) || "868c4794-d264-4891-9d7e-b3fe5f33f2a1"
+
+  let updatedCount = 0
+  const recentCalls = await fetchRecentVapiCalls(apiKey, 50)
+
+  for (const v of recentCalls) {
+    if (!v.id) continue
+    const recordingUrl =
+      v.artifact?.recordingUrl ||
+      v.artifact?.stereoRecordingUrl ||
+      v.recordingUrl ||
+      v.stereoRecordingUrl ||
+      null
+
+    let transcript = v.artifact?.transcript || v.transcript || ""
+    if (!transcript && Array.isArray(v.artifact?.messages)) {
+      transcript = v.artifact.messages
+        .filter((m) => m.message || m.content)
+        .map((m) => {
+          const role =
+            m.role === "assistant" || m.role === "bot"
+              ? "Asistente"
+              : m.role === "user" || m.role === "customer"
+              ? "Cliente"
+              : "Herramienta"
+          return `${role}: ${m.message || m.content}`
+        })
+        .join("\n")
+    }
+
+    const summary = v.analysis?.summary || v.summary || v.artifact?.summary || ""
+    const rawCost = typeof v.cost === "number" ? v.cost : 0
+    const costCents = Math.round(rawCost * 100)
+    const durationSeconds =
+      typeof v.durationSeconds === "number"
+        ? v.durationSeconds
+        : typeof v.duration === "number"
+        ? Math.round(v.duration)
+        : 0
+
+    let status = "completed"
+    if (v.status === "in-progress" || v.status === "ringing" || v.status === "queued") {
+      status = "in-progress"
+    } else if (v.status === "failed") {
+      status = "failed"
+    }
+
+    const [existing] = await db.select().from(calls).where(eq(calls.vapiCallId, v.id)).limit(1)
+    if (existing) {
+      await db
+        .update(calls)
+        .set({
+          recordingUrl: recordingUrl || existing.recordingUrl,
+          transcript: transcript || existing.transcript,
+          summary: summary || existing.summary,
+          durationSeconds: durationSeconds || existing.durationSeconds,
+          costCents: costCents || existing.costCents,
+          status,
+          updatedAt: new Date(),
+        })
+        .where(eq(calls.id, existing.id))
+      updatedCount++
+    } else {
+      const phone = v.customer?.number || v.phoneNumber?.number || "+34919933764"
+      const callerName =
+        v.customer?.name ||
+        (v.type === "inboundPhoneCall" ? "Llamante entrante" : "Interlocutor")
+      const direction = v.type === "inboundPhoneCall" ? "inbound" : "outbound"
+      const startedAt = v.startedAt ? new Date(v.startedAt) : new Date()
+
+      await db.insert(calls).values({
+        vapiCallId: v.id,
+        direction,
+        callerName,
+        phoneNumber: phone,
+        status,
+        durationSeconds,
+        costCents,
+        summary: summary || `Llamada ${direction} procesada por el agente de VAPI.`,
+        transcript,
+        recordingUrl,
+        startedAt,
+        endedAt: v.endedAt ? new Date(v.endedAt) : null,
+      })
+      updatedCount++
+    }
+  }
+
+  // Sincronizar individualmente las llamadas locales completadas sin audio
+  const callsWithoutAudio = await db
+    .select()
+    .from(calls)
+    .where(eq(calls.status, "completed"))
+    .limit(20)
+
+  for (const c of callsWithoutAudio) {
+    if (!c.recordingUrl && c.vapiCallId && !c.vapiCallId.startsWith("vapi_sim_")) {
+      const single = await fetchVapiCall(apiKey, c.vapiCallId)
+      if (single) {
+        const recUrl =
+          single.artifact?.recordingUrl ||
+          single.artifact?.stereoRecordingUrl ||
+          single.recordingUrl ||
+          single.stereoRecordingUrl
+        if (recUrl) {
+          await db
+            .update(calls)
+            .set({
+              recordingUrl: recUrl,
+              costCents: single.cost ? Math.round(single.cost * 100) : c.costCents,
+              durationSeconds: single.durationSeconds || c.durationSeconds,
+              updatedAt: new Date(),
+            })
+            .where(eq(calls.id, c.id))
+          updatedCount++
+        }
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    syncedCount: updatedCount,
+    message: `Se han sincronizado ${updatedCount} llamada(s) con la nube de VAPI. Grabaciones y transcripciones actualizadas.`,
+  }
+}
+
+/**
+ * Alterna el estado de consulta o necesidad de revisión de una llamada.
+ */
+export async function toggleCallReview(
+  actor: Actor,
+  input: { callId: string; needsReview?: boolean; isConsulted?: boolean },
+) {
+  assertCan(actor, PERMISSIONS.campaigns.manage)
+  const [existing] = await db.select().from(calls).where(eq(calls.id, input.callId)).limit(1)
+  if (!existing) {
+    throw new NotFoundError("Llamada no encontrada.")
+  }
+
+  const patch: Partial<typeof calls.$inferInsert> = {
+    updatedAt: new Date(),
+  }
+  if (input.needsReview !== undefined) patch.needsReview = input.needsReview
+  if (input.isConsulted !== undefined) patch.isConsulted = input.isConsulted
+
+  const [updated] = await db
+    .update(calls)
+    .set(patch)
+    .where(eq(calls.id, input.callId))
+    .returning()
+
+  return updated
+}
+
 

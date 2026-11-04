@@ -1,22 +1,39 @@
 "use client"
 
 import {
+  AlertTriangle,
   CheckCircle2,
+  Clock,
   Copy,
+  DollarSign,
+  FileText,
   Headphones,
   MessageSquareText,
   Mic,
+  Pause,
   PhoneCall,
   PhoneIncoming,
   PhoneOutgoing,
+  Play,
   Radio,
+  RefreshCw,
+  Search,
   Send,
   Settings2,
+  User,
   Volume2,
 } from "lucide-react"
-import { useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
+import { useMemo, useRef, useState, useTransition } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -28,6 +45,8 @@ import {
   sendZadarmaEchoTestServerAction,
   sendZadarmaSmsServerAction,
   syncFlamencoToolsServerAction,
+  syncVapiCallsServerAction,
+  toggleCallReviewServerAction,
   triggerOutboundCallServerAction,
 } from "../actions"
 
@@ -42,14 +61,26 @@ export function LlamadasClient({
   canManage: boolean
   canConfigure: boolean
 }) {
-  const [activeTab, setActiveTab] = useState<"registro" | "estudio_voz" | "sms_zadarma" | "ajustes_vapi">(
-    "registro",
-  )
+  const router = useRouter()
+  const [activeTab, setActiveTab] = useState<
+    "registro" | "estudio_voz" | "sms_zadarma" | "ajustes_vapi"
+  >("registro")
   const [isPending, startTransition] = useTransition()
   const [feedback, setFeedback] = useState<string | null>(null)
-  const [selectedCallId, setSelectedCallId] = useState<string | null>(
-    data.calls[0]?.id ?? null,
-  )
+
+  // Filtros de llamadas
+  const [search, setSearch] = useState("")
+  const [directionFilter, setDirectionFilter] = useState<string>("all")
+  const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [consultedFilter, setConsultedFilter] = useState<string>("all")
+  const [dateFilter, setDateFilter] = useState<string>("all")
+
+  // Modal Detalle & Transcripción
+  const [modalCallId, setModalCallId] = useState<string | null>(null)
+
+  // Reproductor de audio inline
+  const [playingAudioId, setPlayingAudioId] = useState<string | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
 
   // Estados llamada saliente
   const [testCallPhone, setTestCallPhone] = useState("+34649453996")
@@ -61,7 +92,7 @@ export function LlamadasClient({
     "🎸 [SONIQUETE FLAMENCO] Confirmada nuestra reunión de contratación artística. Te hemos enviado el dossier y vídeos a tu correo.",
   )
 
-  // Estados Configuración VAPI & Zadarma (exactamente como en crm_salvadora)
+  // Estados Configuración VAPI & Zadarma
   const [vapiEnabled, setVapiEnabled] = useState(data.config.vapiEnabled)
   const [vapiApiKey, setVapiApiKey] = useState(data.config.maskedVapiApiKey ?? "")
   const [vapiAssistantId, setVapiAssistantId] = useState(data.config.vapiAssistantId)
@@ -90,10 +121,116 @@ export function LlamadasClient({
   const [autoSendBookingSms, setAutoSendBookingSms] = useState(data.config.autoSendBookingSms)
   const [zadarmaSipPassword, setZadarmaSipPassword] = useState("PddEcd72ZQ")
 
-  const selectedCall = data.calls.find((c) => c.id === selectedCallId) ?? data.calls[0]
+  // Reproducir audio con proxy autenticado
+  function handlePlayAudio(callId: string) {
+    if (playingAudioId === callId) {
+      if (audioRef.current) {
+        audioRef.current.pause()
+      }
+      setPlayingAudioId(null)
+      return
+    }
+
+    if (audioRef.current) {
+      audioRef.current.pause()
+    }
+
+    const audio = new Audio(`/api/calls/${callId}/recording`)
+    audioRef.current = audio
+    setPlayingAudioId(callId)
+
+    audio
+      .play()
+      .then(() => {
+        setPlayingAudioId(callId)
+      })
+      .catch((err) => {
+        console.warn("No se pudo iniciar reproducción:", err)
+        setPlayingAudioId(null)
+      })
+
+    audio.onended = () => setPlayingAudioId(null)
+    audio.onerror = () => {
+      setFeedback("No se pudo reproducir la grabación (o aún se está procesando en VAPI).")
+      setPlayingAudioId(null)
+    }
+  }
+
+  // Filtrado de llamadas
+  const filteredCalls = useMemo(() => {
+    return data.calls.filter((call) => {
+      // 1. Búsqueda por texto (teléfono, nombre del interlocutor, o resumen)
+      if (search.trim()) {
+        const q = search.toLowerCase()
+        const matchesPhone = call.phoneNumber?.toLowerCase().includes(q)
+        const matchesName = call.callerName?.toLowerCase().includes(q)
+        const matchesSummary = call.summary?.toLowerCase().includes(q)
+        if (!matchesPhone && !matchesName && !matchesSummary) {
+          return false
+        }
+      }
+
+      // 2. Dirección
+      if (directionFilter !== "all" && call.direction !== directionFilter) {
+        return false
+      }
+
+      // 3. Estado
+      if (statusFilter !== "all") {
+        if (statusFilter === "completed" && call.status !== "completed" && call.status !== "ended") {
+          return false
+        }
+        if (statusFilter === "in-progress" && call.status !== "in-progress") {
+          return false
+        }
+        if (statusFilter === "failed" && call.status !== "failed") {
+          return false
+        }
+      }
+
+      // 4. Consultadas / Revisadas
+      if (consultedFilter === "needs_review" && !call.needsReview) {
+        return false
+      }
+      if (consultedFilter === "consulted" && !call.isConsulted) {
+        return false
+      }
+      if (consultedFilter === "pending" && (call.isConsulted || call.needsReview)) {
+        return false
+      }
+
+      // 5. Filtro por fecha
+      if (dateFilter !== "all") {
+        const callDate = new Date(call.startedAt)
+        const now = new Date()
+        if (dateFilter === "today") {
+          const isToday =
+            callDate.getDate() === now.getDate() &&
+            callDate.getMonth() === now.getMonth() &&
+            callDate.getFullYear() === now.getFullYear()
+          if (!isToday) return false
+        } else if (dateFilter === "week") {
+          const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+          if (callDate < sevenDaysAgo) return false
+        } else if (dateFilter === "month") {
+          const isThisMonth =
+            callDate.getMonth() === now.getMonth() &&
+            callDate.getFullYear() === now.getFullYear()
+          if (!isThisMonth) return false
+        }
+      }
+
+      return true
+    })
+  }, [data.calls, search, directionFilter, statusFilter, consultedFilter, dateFilter])
+
+  const modalCall = data.calls.find((c) => c.id === modalCallId) ?? null
 
   return (
     <div className="space-y-6">
+      {/* Audio element oculto */}
+      <audio ref={audioRef} className="hidden" />
+
       {feedback ? (
         <div className="flex items-center justify-between rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-900 dark:text-emerald-200">
           <span className="flex items-center gap-2">
@@ -106,9 +243,10 @@ export function LlamadasClient({
         </div>
       ) : null}
 
-      {/* Subnavegación y accesos directos de prueba */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
-        <div className="flex flex-wrap gap-2">
+      {/* Barra superior con navegación de pestañas y botones de acción */}
+      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+        {/* Pestañas estilo CRM Salvadora */}
+        <div className="flex flex-wrap items-center gap-2 border-b pb-2 md:border-b-0 md:pb-0">
           <Button
             variant={activeTab === "registro" ? "default" : "outline"}
             size="sm"
@@ -147,8 +285,38 @@ export function LlamadasClient({
           </Button>
         </div>
 
-        {/* Botones rápidos de prueba a tu móvil */}
+        {/* Botones de acción principales (Sincronizar VAPI, Actualizar, Probar Saliente, Probar SMS) */}
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={isPending}
+            onClick={() => {
+              startTransition(async () => {
+                const res = await syncVapiCallsServerAction()
+                setFeedback(res.message)
+                router.refresh()
+              })
+            }}
+            className="gap-1.5 border-primary/30 text-primary hover:bg-primary/5"
+            title="Sincronizar grabaciones de audio, transcripciones y costes desde VAPI"
+          >
+            <RefreshCw className={`size-3.5 ${isPending ? "animate-spin" : ""}`} />
+            Sincronizar con VAPI
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={isPending}
+            onClick={() => router.refresh()}
+            className="gap-1.5"
+            title="Recargar llamadas de la base de datos"
+          >
+            <RefreshCw className="size-3.5" />
+            Actualizar
+          </Button>
+
           <Button
             size="sm"
             variant="default"
@@ -167,6 +335,7 @@ export function LlamadasClient({
             <PhoneOutgoing className="size-4" />
             📞 Probar llamada a mi móvil
           </Button>
+
           <Button
             size="sm"
             variant="outline"
@@ -195,139 +364,453 @@ export function LlamadasClient({
         </div>
       </div>
 
-      {/* TAB 1: REGISTRO DE LLAMADAS + AUDIO + TRANSCRIPCIÓN */}
+      {/* ─── TAB 1: REGISTRO DE LLAMADAS (TABLA, FILTROS Y AUDIO PLAYBACK IDÉNTICO A CRM SALVADORA) ─── */}
       {activeTab === "registro" && (
-        <div className="grid gap-6 lg:grid-cols-12">
-          <div className="space-y-4 lg:col-span-7">
-            {canManage && (
-              <div className="rounded-xl border bg-card p-4 shadow-xs">
-                <h3 className="mb-2 text-sm font-semibold">
-                  Lanzar Llamada Saliente con el Agente IA VAPI (vía SIP Trunk Zadarma)
-                </h3>
-                <form
-                  className="grid gap-2 sm:grid-cols-3"
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    startTransition(async () => {
-                      const res = await triggerOutboundCallServerAction({
-                        phoneNumber: testCallPhone,
-                        callerName: testCallName,
-                      })
-                      setFeedback(res.message)
-                    })
-                  }}
-                >
-                  <Input
-                    value={testCallName}
-                    onChange={(e) => setTestCallName(e.target.value)}
-                    placeholder="Nombre del programador o artista"
-                  />
-                  <Input
-                    required
-                    value={testCallPhone}
-                    onChange={(e) => setTestCallPhone(e.target.value)}
-                    placeholder="+34919933764"
-                  />
-                  <Button type="submit" disabled={isPending}>
-                    <PhoneOutgoing className="mr-1.5 size-4" />
-                    Llamar ahora
-                  </Button>
-                </form>
+        <div className="space-y-4">
+          {/* Tarjetas KPI Superiores (exacto a CRM Salvadora) */}
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            <div className="rounded-xl border bg-card p-4 shadow-xs">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span className="text-xs font-medium">Total llamadas</span>
+                <PhoneCall className="size-4 text-primary" />
               </div>
-            )}
+              <p className="mt-2 text-2xl font-bold">{data.stats?.totalCalls ?? data.calls.length}</p>
+            </div>
 
-            <div className="grid gap-2 2xl:grid-cols-2">
-              {data.calls.map((c) => {
-                const isSelected = selectedCall?.id === c.id
-                return (
-                  <div
-                    key={c.id}
-                    onClick={() => setSelectedCallId(c.id)}
-                    className={`cursor-pointer rounded-xl border p-4 transition ${
-                      isSelected
-                        ? "border-primary bg-primary/5"
-                        : "bg-card hover:border-primary/40"
-                    }`}
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        {c.direction === "inbound" ? (
-                          <PhoneIncoming className="size-4 text-emerald-600" />
-                        ) : (
-                          <PhoneOutgoing className="size-4 text-sky-600" />
-                        )}
-                        <span className="font-semibold">
-                          {c.callerName || "Interlocutor"} ({c.phoneNumber})
-                        </span>
-                        <Badge variant="outline">
-                          {c.direction === "inbound" ? "Entrante" : "Saliente"}
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span>{c.durationSeconds} s</span>
-                        <span>·</span>
-                        <span>{new Date(c.startedAt).toLocaleString("es-ES")}</span>
-                      </div>
-                    </div>
-                    <p className="mt-1.5 line-clamp-2 text-xs text-muted-foreground">
-                      {c.summary}
-                    </p>
-                  </div>
-                )
-              })}
+            <div className="rounded-xl border bg-card p-4 shadow-xs">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span className="text-xs font-medium">Requieren Revisión</span>
+                <AlertTriangle className="size-4 text-amber-500" />
+              </div>
+              <p className="mt-2 text-2xl font-bold text-amber-600">
+                {data.stats?.needsReviewCount ?? 0}
+              </p>
+            </div>
+
+            <div className="rounded-xl border bg-card p-4 shadow-xs">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span className="text-xs font-medium">Tiempo Total Hablado</span>
+                <Clock className="size-4 text-emerald-600" />
+              </div>
+              <p className="mt-2 text-2xl font-bold">
+                {Math.round((data.stats?.totalDurationSeconds ?? 0) / 60)} min
+              </p>
+            </div>
+
+            <div className="rounded-xl border bg-card p-4 shadow-xs">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span className="text-xs font-medium">Coste Acumulado</span>
+                <DollarSign className="size-4 text-purple-600" />
+              </div>
+              <p className="mt-2 text-2xl font-bold">
+                ${(((data.stats?.totalCostCents ?? 0) / 100)).toFixed(2)}
+              </p>
             </div>
           </div>
 
-          <div className="lg:col-span-5">
-            {selectedCall ? (
-              <div className="sticky top-4 space-y-4 rounded-xl border bg-card p-5 shadow-xs">
-                <div className="flex items-center justify-between border-b pb-3">
-                  <div>
-                    <h3 className="font-bold">
-                      {selectedCall.callerName} · {selectedCall.phoneNumber}
-                    </h3>
-                    <p className="text-xs text-muted-foreground">
-                      ID VAPI: {selectedCall.vapiCallId || selectedCall.id.slice(0, 10)} · Duración:{" "}
-                      {selectedCall.durationSeconds} segundos
-                    </p>
-                  </div>
-                  <Badge>{selectedCall.status}</Badge>
-                </div>
+          {/* Formulario rápido para lanzar llamada */}
+          {canManage && (
+            <div className="rounded-xl border bg-card p-4 shadow-xs">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-sm font-semibold">
+                  Lanzar Llamada Saliente con el Agente IA VAPI (vía SIP Trunk Zadarma)
+                </h3>
+                <span className="text-xs text-muted-foreground">
+                  Caller ID: {data.config.zadarmaPhoneNumber || "+34919933764"}
+                </span>
+              </div>
+              <form
+                className="grid gap-2 sm:grid-cols-3"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  startTransition(async () => {
+                    const res = await triggerOutboundCallServerAction({
+                      phoneNumber: testCallPhone,
+                      callerName: testCallName,
+                    })
+                    setFeedback(res.message)
+                    router.refresh()
+                  })
+                }}
+              >
+                <Input
+                  value={testCallName}
+                  onChange={(e) => setTestCallName(e.target.value)}
+                  placeholder="Nombre del programador o artista"
+                />
+                <Input
+                  required
+                  value={testCallPhone}
+                  onChange={(e) => setTestCallPhone(e.target.value)}
+                  placeholder="+34919933764"
+                />
+                <Button type="submit" disabled={isPending} className="bg-primary">
+                  <PhoneOutgoing className="mr-1.5 size-4" />
+                  Llamar ahora
+                </Button>
+              </form>
+            </div>
+          )}
 
-                {selectedCall.recordingUrl ? (
-                  <div className="rounded-lg border bg-muted/40 p-3">
-                    <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold">
-                      <Volume2 className="size-4 text-primary" />
-                      Grabación de la llamada
+          {/* Barra de Filtros interactiva (Búsqueda, Dirección, Estado, Consultadas/Revisadas, Fecha) */}
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-3 shadow-xs">
+            <div className="relative min-w-[240px] flex-1">
+              <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por teléfono, cliente o resumen..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 text-sm"
+              />
+            </div>
+
+            {/* Selector de Dirección */}
+            <select
+              value={directionFilter}
+              onChange={(e) => setDirectionFilter(e.target.value)}
+              className="h-9 rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <option value="all">Todas las direcciones</option>
+              <option value="inbound">Entrantes</option>
+              <option value="outbound">Salientes</option>
+            </select>
+
+            {/* Selector de Estado */}
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="h-9 rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <option value="all">Todo el estado</option>
+              <option value="completed">Finalizada</option>
+              <option value="in-progress">En curso</option>
+              <option value="failed">Fallida</option>
+            </select>
+
+            {/* Selector por Consultadas / Revisadas */}
+            <select
+              value={consultedFilter}
+              onChange={(e) => setConsultedFilter(e.target.value)}
+              className="h-9 rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <option value="all">Consultadas & Revisión (Todas)</option>
+              <option value="needs_review">⚠️ Requiere Revisión</option>
+              <option value="consulted">✅ Consultadas / Resueltas</option>
+              <option value="pending">⏳ Pendientes de consultar</option>
+            </select>
+
+            {/* Selector por Fecha */}
+            <select
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+              className="h-9 rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <option value="all">Todas las fechas</option>
+              <option value="today">Hoy</option>
+              <option value="week">Últimos 7 días</option>
+              <option value="month">Este mes</option>
+            </select>
+
+            {(search || directionFilter !== "all" || statusFilter !== "all" || consultedFilter !== "all" || dateFilter !== "all") && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSearch("")
+                  setDirectionFilter("all")
+                  setStatusFilter("all")
+                  setConsultedFilter("all")
+                  setDateFilter("all")
+                }}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Limpiar filtros
+              </Button>
+            )}
+          </div>
+
+          {/* Tabla idéntica a CRM Salvadora */}
+          {filteredCalls.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed p-12 text-center">
+              <div className="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <PhoneCall className="size-6" />
+              </div>
+              <h3 className="mt-3 text-base font-semibold">No se encontraron llamadas</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Prueba cambiando los filtros de fecha o búsqueda, o pulsa en «Sincronizar con VAPI» para descargar las llamadas recientes.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-xl border bg-card shadow-xs">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="border-b bg-muted/40 text-xs font-semibold uppercase text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-3">Tipo / Teléfono</th>
+                      <th className="px-4 py-3">Contacto</th>
+                      <th className="px-4 py-3">Estado</th>
+                      <th className="px-4 py-3">Duración</th>
+                      <th className="px-4 py-3">Fecha y Hora</th>
+                      <th className="px-4 py-3">Coste</th>
+                      <th className="px-4 py-3">Grabación</th>
+                      <th className="px-4 py-3 text-right">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {filteredCalls.map((call) => {
+                      const isIncoming = call.direction === "inbound"
+                      const dateObj = new Date(call.startedAt)
+                      const isPlaying = playingAudioId === call.id
+                      const hasRecording = Boolean(call.recordingUrl || call.vapiCallId)
+
+                      return (
+                        <tr key={call.id} className="transition-colors hover:bg-muted/30">
+                          {/* 1. Tipo / Teléfono */}
+                          <td className="px-4 py-3 font-medium">
+                            <div className="flex items-center gap-2">
+                              {isIncoming ? (
+                                <span
+                                  className="flex size-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400"
+                                  title="Llamada entrante"
+                                >
+                                  <PhoneIncoming className="size-4" />
+                                </span>
+                              ) : (
+                                <span
+                                  className="flex size-7 items-center justify-center rounded-lg bg-sky-50 text-sky-600 dark:bg-sky-950 dark:text-sky-400"
+                                  title="Llamada saliente"
+                                >
+                                  <PhoneOutgoing className="size-4" />
+                                </span>
+                              )}
+                              <div>
+                                <p className="font-semibold text-foreground">
+                                  {call.phoneNumber || "Número desconocido"}
+                                </p>
+                                <span className="text-xs capitalize text-muted-foreground">
+                                  {call.direction}
+                                </span>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* 2. Contacto */}
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1.5 text-sm font-medium">
+                              <User className="size-3.5 text-muted-foreground" />
+                              <span>{call.callerName || "Sin asociar"}</span>
+                            </div>
+                          </td>
+
+                          {/* 3. Estado */}
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1.5">
+                              {call.status === "completed" || call.status === "ended" ? (
+                                <Badge variant="outline" className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
+                                  Finalizada
+                                </Badge>
+                              ) : call.status === "in-progress" ? (
+                                <Badge variant="secondary" className="border-amber-500/30 text-amber-600">
+                                  En curso
+                                </Badge>
+                              ) : (
+                                <Badge variant="destructive">
+                                  {call.status}
+                                </Badge>
+                              )}
+
+                              {call.needsReview ? (
+                                <span className="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                                  <AlertTriangle className="size-3" />
+                                  Revisar
+                                </span>
+                              ) : call.isConsulted ? (
+                                <span className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                                  Consultada
+                                </span>
+                              ) : null}
+                            </div>
+                          </td>
+
+                          {/* 4. Duración */}
+                          <td className="px-4 py-3 font-mono text-xs">
+                            {call.durationSeconds ? `${call.durationSeconds}s` : "—"}
+                          </td>
+
+                          {/* 5. Fecha y Hora */}
+                          <td className="px-4 py-3 text-xs text-muted-foreground">
+                            {dateObj.toLocaleString("es-ES", {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </td>
+
+                          {/* 6. Coste */}
+                          <td className="px-4 py-3 font-mono text-xs">
+                            {call.costCents ? `$${(call.costCents / 100).toFixed(2)}` : "—"}
+                          </td>
+
+                          {/* 7. Grabación (Audio Playback) */}
+                          <td className="px-4 py-3">
+                            {hasRecording ? (
+                              <button
+                                type="button"
+                                onClick={() => handlePlayAudio(call.id)}
+                                className={`flex size-7 items-center justify-center rounded-full transition-all shadow-xs ${
+                                  isPlaying
+                                    ? "bg-primary text-primary-foreground animate-pulse"
+                                    : "bg-muted text-foreground hover:bg-primary/20 hover:text-primary"
+                                }`}
+                                title={isPlaying ? "Pausar audio" : "Escuchar voz de la llamada"}
+                              >
+                                {isPlaying ? (
+                                  <Pause className="size-3.5 fill-current" />
+                                ) : (
+                                  <Play className="size-3.5 fill-current ml-0.5" />
+                                )}
+                              </button>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Sin audio</span>
+                            )}
+                          </td>
+
+                          {/* 8. Acciones (Detalle & Transcripción) */}
+                          <td className="px-4 py-3 text-right">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setModalCallId(call.id)}
+                              className="h-8 px-2.5 text-xs"
+                            >
+                              Detalle & Transcripción
+                            </Button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Modal / Diálogo de Detalle & Transcripción */}
+          <Dialog open={Boolean(modalCallId)} onOpenChange={(open) => !open && setModalCallId(null)}>
+            <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+              {modalCall ? (
+                <div className="space-y-4">
+                  <DialogHeader>
+                    <div className="flex items-center justify-between">
+                      <DialogTitle className="text-lg font-bold">
+                        {modalCall.callerName || "Interlocutor"} · {modalCall.phoneNumber}
+                      </DialogTitle>
+                      <Badge variant="outline">{modalCall.status}</Badge>
+                    </div>
+                    <DialogDescription className="text-xs">
+                      ID VAPI: <code>{modalCall.vapiCallId || modalCall.id}</code> · Duración:{" "}
+                      {modalCall.durationSeconds} s · Coste:{" "}
+                      {modalCall.costCents ? `$${(modalCall.costCents / 100).toFixed(2)}` : "$0.00"} ·{" "}
+                      {new Date(modalCall.startedAt).toLocaleString("es-ES")}
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  {/* Reproductor de Audio Completo */}
+                  <div className="rounded-xl border bg-muted/30 p-3.5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-xs font-semibold">
+                        <Volume2 className="size-4 text-primary" />
+                        Grabación de la Llamada de Voz
+                      </div>
+                      <span className="text-[11px] text-muted-foreground">
+                        Audio oficial VAPI / Zadarma
+                      </span>
                     </div>
                     <audio
                       controls
                       className="w-full"
-                      src={`/api/calls/${selectedCall.id}/recording`}
+                      src={`/api/calls/${modalCall.id}/recording`}
                     />
                   </div>
-                ) : null}
 
-                <div>
-                  <h4 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
-                    Resumen IA de la Conversación
-                  </h4>
-                  <p className="rounded-lg bg-muted/30 p-3 text-xs">
-                    {selectedCall.summary}
-                  </p>
-                </div>
+                  {/* Acciones de Consulta y Revisión */}
+                  <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/20 p-2.5">
+                    <span className="text-xs font-medium text-muted-foreground">Estado de gestión:</span>
+                    <Button
+                      size="sm"
+                      variant={modalCall.isConsulted ? "default" : "outline"}
+                      disabled={isPending}
+                      onClick={() => {
+                        startTransition(async () => {
+                          await toggleCallReviewServerAction({
+                            callId: modalCall.id,
+                            isConsulted: !modalCall.isConsulted,
+                            needsReview: false,
+                          })
+                          setFeedback(
+                            modalCall.isConsulted
+                              ? "Llamada desmarcada como consultada."
+                              : "Llamada marcada como consultada y resuelta.",
+                          )
+                          router.refresh()
+                        })
+                      }}
+                      className="h-7 text-xs"
+                    >
+                      <CheckCircle2 className="mr-1 size-3.5" />
+                      {modalCall.isConsulted ? "Consultada (Resuelta)" : "Marcar como Consultada"}
+                    </Button>
 
-                <div>
-                  <h4 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
-                    Transcripción Completa
-                  </h4>
-                  <pre className="max-h-72 overflow-y-auto whitespace-pre-wrap rounded-lg border bg-muted/20 p-3 font-sans text-xs">
-                    {selectedCall.transcript || "Sin transcripción disponible."}
-                  </pre>
+                    <Button
+                      size="sm"
+                      variant={modalCall.needsReview ? "destructive" : "outline"}
+                      disabled={isPending}
+                      onClick={() => {
+                        startTransition(async () => {
+                          await toggleCallReviewServerAction({
+                            callId: modalCall.id,
+                            needsReview: !modalCall.needsReview,
+                          })
+                          setFeedback(
+                            modalCall.needsReview
+                              ? "Llamada retirada de revisión."
+                              : "Llamada marcada como 'Requiere Revisión'.",
+                          )
+                          router.refresh()
+                        })
+                      }}
+                      className="h-7 text-xs"
+                    >
+                      <AlertTriangle className="mr-1 size-3.5" />
+                      {modalCall.needsReview ? "Pendiente de Revisión" : "Marcar para Revisar"}
+                    </Button>
+                  </div>
+
+                  {/* Resumen IA */}
+                  <div>
+                    <h4 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
+                      Resumen IA de la Conversación
+                    </h4>
+                    <p className="rounded-lg bg-muted/30 p-3 text-xs leading-relaxed">
+                      {modalCall.summary || "No hay resumen generado aún para esta llamada."}
+                    </p>
+                  </div>
+
+                  {/* Transcripción Completa */}
+                  <div>
+                    <h4 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
+                      Transcripción Completa
+                    </h4>
+                    <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap rounded-lg border bg-muted/20 p-3 font-sans text-xs leading-relaxed">
+                      {modalCall.transcript || "Sin transcripción disponible."}
+                    </pre>
+                  </div>
                 </div>
-              </div>
-            ) : null}
-          </div>
+              ) : null}
+            </DialogContent>
+          </Dialog>
         </div>
       )}
 
@@ -528,7 +1011,7 @@ export function LlamadasClient({
         </div>
       )}
 
-      {/* TAB 4: PANEL IDÉNTICO AL DE CRM_SALVADORA: "Voz Telefónica (VAPI & Zadarma) y SMS (n8n)" */}
+      {/* TAB 4: AJUSTES VAPI & ZADARMA SIP TRUNK */}
       {activeTab === "ajustes_vapi" && (
         <div className="rounded-2xl border bg-card p-6 shadow-xs">
           <div className="mb-6 flex flex-wrap items-center justify-between gap-2 border-b pb-4">
@@ -652,7 +1135,7 @@ export function LlamadasClient({
               </Button>
             </div>
 
-            {/* SECCIÓN LÍNEA SALIENTE DE ZADARMA (CALLER ID +34) IDÉNTICA A CRM_SALVADORA */}
+            {/* SECCIÓN LÍNEA SALIENTE DE ZADARMA */}
             <div className="rounded-xl border bg-muted/30 p-4">
               <div className="mb-2 flex items-center justify-between">
                 <div>
