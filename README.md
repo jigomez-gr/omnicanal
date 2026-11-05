@@ -869,7 +869,7 @@ Guías para el negocio (también dentro de la app, en Ayuda):
   paso a paso.
 - [Lista de puesta en marcha](docs/checklist-puesta-en-marcha.md): de `pnpm db:fresh` a la primera conversación de un
   negocio real.
-- [Guía de cuentas de Soniquete (Telegram, Meta y Hostinger)](docs/guia-soniquete-cuentas-telegram-meta-hostinger.md):
+- [Guía de cuentas e integración de Soniquete (Telegram, Meta y Hostinger)](docs/integracion-soniquete-cuentas.md):
   configuración paso a paso de los canales de promoción artística.
 
 Para el negocio, fuera de la app: la [plantilla de contrato de encargo del tratamiento](docs/contrato-encargo-tratamiento.md)

@@ -17,6 +17,7 @@ import {
   Search,
   Send,
   Settings2,
+  ShieldAlert,
   Sparkles,
   Trash2,
   UserCheck,
@@ -26,6 +27,16 @@ import {
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useMemo, useState, useTransition } from "react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -302,6 +313,16 @@ export function PromocionClient({
   const [packSetupEur, setPackSetupEur] = useState("950")
   const [packMonthlyEur, setPackMonthlyEur] = useState("190")
   const [packNotes, setPackNotes] = useState("")
+
+  // ─── Modal de reconfirmación de eliminación y prevención de huérfanos ───
+  interface DeletionConfirmation {
+    title: string
+    entityName: string
+    description?: string
+    warnings: string[]
+    onConfirm: () => Promise<void>
+  }
+  const [deletionConfirm, setDeletionConfirm] = useState<DeletionConfirmation | null>(null)
 
   // ─── Listas filtradas por búsqueda instantánea ───
   const filteredArtists = useMemo(() => {
@@ -1110,11 +1131,35 @@ export function PromocionClient({
                               disabled={!canManage || isPending}
                               className="h-8 gap-1 border-rose-200 text-xs text-rose-700 hover:bg-rose-50"
                               onClick={() => {
-                                startTransition(async () => {
-                                  await deleteArtistAction(artist.id)
-                                  if (editingArtistId === artist.id) resetArtistForm()
-                                  setFeedback(`Intérprete «${artist.artisticName}» eliminado.`)
-                                  router.refresh()
+                                const artistMedia = snapshot.mediaAssets.filter((m) => m.artistId === artist.id)
+                                const artistConcerts = snapshot.concerts.filter((c) => c.artistId === artist.id)
+                                const artistDigital = snapshot.digitalServices.filter((ds) => ds.artistId === artist.id)
+                                const artistServices = snapshot.catalogServices.filter((s) => s.artistId === artist.id)
+
+                                setDeletionConfirm({
+                                  title: "¿Confirmar baja del intérprete?",
+                                  entityName: artist.artisticName,
+                                  description: "Se eliminará el registro maestro del intérprete. Para evitar registros huérfanos, el sistema limpiará en cascada todas sus relaciones master-detail:",
+                                  warnings: [
+                                    artistMedia.length > 0
+                                      ? `Se eliminarán definitivamente sus ${artistMedia.length} vídeos y piezas multimedia del dossier (sin dejar vídeos huérfanos).`
+                                      : "No tiene vídeos ni piezas multimedia en su dossier.",
+                                    artistConcerts.length > 0
+                                      ? `Se cancelarán y eliminarán ${artistConcerts.length} conciertos/eventos y sus reservas provisionales asociadas.`
+                                      : "No tiene conciertos programados.",
+                                    artistDigital.length > 0
+                                      ? `Se cancelarán ${artistDigital.length} packs de servicios digitales a artistas.`
+                                      : "No tiene packs digitales contratados.",
+                                    artistServices.length > 0
+                                      ? `Se eliminarán ${artistServices.length} servicios de catálogo y agenda asociados.`
+                                      : "No tiene servicios directos en agenda.",
+                                  ],
+                                  onConfirm: async () => {
+                                    await deleteArtistAction(artist.id)
+                                    if (editingArtistId === artist.id) resetArtistForm()
+                                    setFeedback(`Intérprete «${artist.artisticName}» y sus piezas dependientes eliminados correctamente.`)
+                                    router.refresh()
+                                  },
                                 })
                               }}
                             >
@@ -1186,10 +1231,20 @@ export function PromocionClient({
                                         <button
                                           type="button"
                                           onClick={() => {
-                                            startTransition(async () => {
-                                              await deleteMediaAssetAction(m.id)
-                                              setFeedback(`Pieza «${m.title}» eliminada.`)
-                                              router.refresh()
+                                            setDeletionConfirm({
+                                              title: "¿Confirmar borrado de la pieza multimedia?",
+                                              entityName: m.title,
+                                              description: "La pieza de vídeo o material gráfico se eliminará permanentemente del pack del artista y del catálogo:",
+                                              warnings: [
+                                                `Tipo de pieza: ${m.pieceCode} · Formato: ${m.formatLabel}`,
+                                                `URL / Archivo: ${m.fileUrl}`,
+                                                "Dejará de estar disponible para el dossier del artista y la landing web.",
+                                              ],
+                                              onConfirm: async () => {
+                                                await deleteMediaAssetAction(m.id)
+                                                setFeedback(`Pieza «${m.title}» eliminada.`)
+                                                router.refresh()
+                                              },
                                             })
                                           }}
                                           className="rounded px-1.5 py-0.5 text-[11px] font-medium text-rose-700 hover:bg-rose-50"
@@ -1572,11 +1627,27 @@ export function PromocionClient({
                           disabled={!canManage || isPending}
                           className="h-8 gap-1 border-rose-200 text-xs text-rose-700 hover:bg-rose-50"
                           onClick={() => {
-                            startTransition(async () => {
-                              await deleteRepresentativeAction(rep.id)
-                              if (editingRepId === rep.id) resetRepForm()
-                              setFeedback(`Representante «${rep.fullName}» eliminado.`)
-                              router.refresh()
+                            const repArtists = snapshot.artists.filter((a) => a.representativeId === rep.id)
+                            const repConcerts = snapshot.concerts.filter((c) => c.representativeId === rep.id)
+
+                            setDeletionConfirm({
+                              title: "¿Confirmar baja del representante o agencia?",
+                              entityName: rep.fullName,
+                              description: "Se dará de baja el representante. Para evitar inconsistencias, sus relaciones se desvincularán de forma limpia sin eliminar los artistas ni los eventos:",
+                              warnings: [
+                                repArtists.length > 0
+                                  ? `Se desvincularán ${repArtists.length} intérpretes (quedarán sin representante asignado sin perder sus datos).`
+                                  : "No tiene intérpretes vinculados.",
+                                repConcerts.length > 0
+                                  ? `Se desvincularán ${repConcerts.length} conciertos programados.`
+                                  : "No tiene conciertos vinculados.",
+                              ],
+                              onConfirm: async () => {
+                                await deleteRepresentativeAction(rep.id)
+                                if (editingRepId === rep.id) resetRepForm()
+                                setFeedback(`Representante «${rep.fullName}» eliminado.`)
+                                router.refresh()
+                              },
                             })
                           }}
                         >
@@ -1753,11 +1824,27 @@ export function PromocionClient({
                           disabled={!canManage || isPending}
                           className="h-8 gap-1 border-rose-200 text-xs text-rose-700 hover:bg-rose-50"
                           onClick={() => {
-                            startTransition(async () => {
-                              await deleteVenueAction(v.id)
-                              if (editingVenueId === v.id) resetVenueForm()
-                              setFeedback(`Sala/entidad «${v.name}» eliminada.`)
-                              router.refresh()
+                            const venueConcerts = snapshot.concerts.filter((c) => c.venueId === v.id)
+                            const venueServices = snapshot.catalogServices.filter((s) => s.venueId === v.id)
+
+                            setDeletionConfirm({
+                              title: "¿Confirmar baja de la sala o entidad programadora?",
+                              entityName: v.name,
+                              description: "Se eliminará la sala/ateneo del catálogo. Para evitar registros huérfanos, los conciertos y servicios programados se desvincularán manteniendo su fecha e información:",
+                              warnings: [
+                                venueConcerts.length > 0
+                                  ? `Hay ${venueConcerts.length} conciertos programados en este espacio: quedarán sin sala asignada (pendiente de fijar lugar).`
+                                  : "No hay conciertos pendientes en este espacio.",
+                                venueServices.length > 0
+                                  ? `Se desvincularán ${venueServices.length} servicios de agenda asociados.`
+                                  : "No tiene servicios asociados en agenda.",
+                              ],
+                              onConfirm: async () => {
+                                await deleteVenueAction(v.id)
+                                if (editingVenueId === v.id) resetVenueForm()
+                                setFeedback(`Sala/entidad «${v.name}» eliminada.`)
+                                router.refresh()
+                              },
                             })
                           }}
                         >
@@ -1949,11 +2036,21 @@ export function PromocionClient({
                           disabled={!canManage || isPending}
                           className="h-8 gap-1 border-rose-200 text-xs text-rose-700 hover:bg-rose-50"
                           onClick={() => {
-                            startTransition(async () => {
-                              await deleteCatalogServiceAction(svc.id)
-                              if (editingCatalogServiceId === svc.id) resetCatalogServiceForm()
-                              setFeedback(`Servicio «${svc.name}» eliminado de Agenda y Landing.`)
-                              router.refresh()
+                            setDeletionConfirm({
+                              title: "¿Confirmar baja del servicio de catálogo y agenda?",
+                              entityName: svc.name,
+                              description: "El servicio y sus asignaciones de recursos serán eliminados permanentemente del sistema:",
+                              warnings: [
+                                `Categoría: ${svc.category}`,
+                                `Duración: ${svc.durationMin} min · Precio: ${svc.sinpreciodefinitivo ? svc.textosinpreciodefinitivo || "A consultar" : `${svc.price ?? 0} €`}`,
+                                "Dejará de estar disponible para reservas en la Agenda, Landing Web, Agente IA y WhatsApp.",
+                              ],
+                              onConfirm: async () => {
+                                await deleteCatalogServiceAction(svc.id)
+                                if (editingCatalogServiceId === svc.id) resetCatalogServiceForm()
+                                setFeedback(`Servicio «${svc.name}» eliminado de Agenda y Landing.`)
+                                router.refresh()
+                              },
                             })
                           }}
                         >
@@ -2441,11 +2538,28 @@ export function PromocionClient({
                         disabled={!canManage || isPending}
                         className="h-8 gap-1 border-rose-200 text-xs text-rose-700 hover:bg-rose-50"
                         onClick={() => {
-                          startTransition(async () => {
-                            await deleteConcertAction(c.id)
-                            if (editingConcertId === c.id) resetConcertForm()
-                            setFeedback(`Evento «${c.title}» eliminado de Conciertos y Agenda.`)
-                            router.refresh()
+                          const concertMedia = snapshot.mediaAssets.filter((m) => m.concertId === c.id)
+                          const concertServices = snapshot.catalogServices.filter((s) => s.concertId === c.id)
+
+                          setDeletionConfirm({
+                            title: "¿Confirmar baja del concierto / evento?",
+                            entityName: c.title,
+                            description: "El concierto será eliminado del sistema. Para evitar registros huérfanos, el sistema limpiará automáticamente todas sus relaciones dependientes:",
+                            warnings: [
+                              "Se cancelarán todas las reservas provisionales registradas para este evento.",
+                              concertServices.length > 0
+                                ? `Se eliminarán ${concertServices.length} servicios asociados en la Agenda del CRM.`
+                                : "No tiene servicios directos en agenda.",
+                              concertMedia.length > 0
+                                ? `Se eliminarán ${concertMedia.length} piezas multimedia específicas asociadas al evento.`
+                                : "No tiene piezas multimedia asociadas.",
+                            ],
+                            onConfirm: async () => {
+                              await deleteConcertAction(c.id)
+                              if (editingConcertId === c.id) resetConcertForm()
+                              setFeedback(`Evento «${c.title}» y sus dependencias eliminados.`)
+                              router.refresh()
+                            },
                           })
                         }}
                       >
@@ -3060,11 +3174,22 @@ export function PromocionClient({
                         disabled={!canManage || isPending}
                         className="h-8 gap-1 border-rose-200 text-xs text-rose-700 hover:bg-rose-50"
                         onClick={() => {
-                          startTransition(async () => {
-                            await deleteArtistDigitalServiceAction(ds.id)
-                            if (editingDigitalServiceId === ds.id) resetDigitalServiceForm()
-                            setFeedback(`Pack «${ds.packName}» eliminado.`)
-                            router.refresh()
+                          const packArtist = snapshot.artists.find((a) => a.id === ds.artistId)
+                          setDeletionConfirm({
+                            title: "¿Confirmar baja del pack de servicios digitales?",
+                            entityName: `${ds.packName} (${packArtist?.artisticName || "Artista"})`,
+                            description: "Se dará de baja el pack digital para este intérprete:",
+                            warnings: [
+                              `Pack: ${ds.packName} · Cuota mensual: ${ds.monthlyFeeEur} €/mes`,
+                              `Intérprete: ${packArtist?.artisticName || "No asignado"}`,
+                              "Se cancelará el registro de este pack de servicios digitales.",
+                            ],
+                            onConfirm: async () => {
+                              await deleteArtistDigitalServiceAction(ds.id)
+                              if (editingDigitalServiceId === ds.id) resetDigitalServiceForm()
+                              setFeedback(`Pack «${ds.packName}» eliminado.`)
+                              router.refresh()
+                            },
                           })
                         }}
                       >
@@ -3239,6 +3364,79 @@ export function PromocionClient({
           </div>
         </div>
       )}
+
+      {/* ─── Modal de reconfirmación de bajas y protección de integridad maestro-detalle ─── */}
+      <AlertDialog
+        open={Boolean(deletionConfirm)}
+        onOpenChange={(open) => {
+          if (!open && !isPending) setDeletionConfirm(null)
+        }}
+      >
+        <AlertDialogContent className="max-w-lg border-rose-200">
+          <AlertDialogHeader>
+            <div className="flex items-center gap-2 text-rose-700">
+              <ShieldAlert className="size-5" />
+              <span className="text-xs font-bold uppercase tracking-wider">
+                Reconfirmación de Baja · Integridad Relacional
+              </span>
+            </div>
+            <AlertDialogTitle className="text-lg font-bold text-stone-900 mt-1">
+              {deletionConfirm?.title}
+            </AlertDialogTitle>
+            <div className="rounded-md bg-stone-100 px-3 py-2 text-sm font-semibold text-stone-900">
+              «{deletionConfirm?.entityName}»
+            </div>
+            <AlertDialogDescription className="text-xs text-stone-600 space-y-2.5 mt-2">
+              <p>{deletionConfirm?.description}</p>
+              {deletionConfirm && deletionConfirm.warnings.length > 0 && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50/80 p-3 text-stone-800 space-y-1.5 text-left">
+                  <p className="font-semibold text-amber-950 flex items-center gap-1.5 text-xs">
+                    <AlertTriangle className="size-4 text-amber-600 shrink-0" />
+                    Impacto en registros vinculados (Master-Detail):
+                  </p>
+                  <ul className="list-disc list-inside space-y-1 text-xs text-stone-700 pl-1">
+                    {deletionConfirm.warnings.map((w, idx) => (
+                      <li key={idx} className="leading-relaxed">
+                        {w}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <p className="text-[11px] text-rose-700 font-medium">
+                ⚠️ Esta acción no se puede deshacer. Se garantizará que no queden registros ni archivos huérfanos.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4 gap-2">
+            <AlertDialogCancel
+              disabled={isPending}
+              onClick={() => setDeletionConfirm(null)}
+              className="text-stone-700"
+            >
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isPending}
+              className="bg-rose-700 hover:bg-rose-800 text-white gap-1.5 shadow-sm"
+              onClick={() => {
+                if (!deletionConfirm) return
+                const action = deletionConfirm.onConfirm
+                startTransition(async () => {
+                  try {
+                    await action()
+                  } finally {
+                    setDeletionConfirm(null)
+                  }
+                })
+              }}
+            >
+              <Trash2 className="size-4" />
+              {isPending ? "Eliminando registros..." : "Sí, dar de baja definitivamente"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

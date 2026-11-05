@@ -329,7 +329,7 @@ async function deliver(campaign: Campaign, recipient: Recipient, decision: Extra
         recipient: { contactId, campaignId: campaign.id },
         unsubscribeUrl: appUrl(`/api/baja/${token}`),
       },
-      mailer,
+      mailer ? { ...mailer, now } : { now },
     );
     if (!result.ok) {
       const stop = result.accountRejected ? "El servidor del correo del sistema rechaza los correos: revisa el usuario y la contraseña, o si la cuenta está suspendida, en Ajustes › Correo del sistema." : undefined;

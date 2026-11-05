@@ -68,28 +68,11 @@ function withRetentionDefaults(row: BusinessSettings): BusinessSettings {
 
 /** System: the integration settings row (created if missing). Contains encrypted secrets: never return it. */
 export async function loadIntegrationSettings(executor: Executor = db): Promise<IntegrationSettings> {
-  let [row] = await executor.select().from(integrationSettings).limit(1);
-  if (!row) {
-    await ensureSettingsRows(executor);
-    [row] = await executor.select().from(integrationSettings).limit(1);
-  }
-  if (row && (!row.smtp || !row.smtp.host || row.smtp.host.includes("tudominio"))) {
-    const defaultSmtp: SmtpSettings = {
-      host: "smtp.hostinger.com",
-      port: 465,
-      security: "tls",
-      user: "soniqueteflamenco@soniqueteflamenco.com",
-      fromEmail: "soniqueteflamenco@soniqueteflamenco.com",
-      fromName: "soniqueteflamenco.com",
-    };
-    row = { ...row, smtp: defaultSmtp };
-    executor
-      .update(integrationSettings)
-      .set({ smtp: defaultSmtp })
-      .where(eq(integrationSettings.id, row.id))
-      .catch(() => {});
-  }
-  return row;
+  const [row] = await executor.select().from(integrationSettings).limit(1);
+  if (row) return row;
+  await ensureSettingsRows(executor);
+  const [created] = await executor.select().from(integrationSettings).limit(1);
+  return created;
 }
 
 export type OpenRouterKeySource = "settings" | "env";

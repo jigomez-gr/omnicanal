@@ -1,5 +1,5 @@
 import "server-only"
-import { desc, eq, inArray } from "drizzle-orm"
+import { desc, eq, inArray, or } from "drizzle-orm"
 import { z } from "zod"
 import { db } from "@/db"
 import {
@@ -2722,9 +2722,66 @@ export async function updateFlamencoArtist(actor: Actor, rawInput: unknown) {
 
 export async function deleteFlamencoArtist(actor: Actor, artistId: string) {
   assertCan(actor, PERMISSIONS.campaigns.manage)
-  await db.delete(services).where(eq(services.artistId, artistId))
-  const [deleted] = await db.delete(artists).where(eq(artists.id, artistId)).returning()
-  if (!deleted) throw new NotFoundError("Intérprete no encontrado.")
+
+  const deleted = await db.transaction(async (tx) => {
+    // 1. Localizar conciertos del artista para cascada de servicios y reservas
+    const artistConcerts = await tx
+      .select({ id: concerts.id })
+      .from(concerts)
+      .where(eq(concerts.artistId, artistId))
+    const concertIds = artistConcerts.map((c) => c.id)
+
+    // 2. Limpiar servicios y recursos vinculados en agenda
+    const linkedServices = await tx
+      .select({ id: services.id })
+      .from(services)
+      .where(
+        concertIds.length > 0
+          ? or(eq(services.artistId, artistId), inArray(services.concertId, concertIds))
+          : eq(services.artistId, artistId),
+      )
+    for (const s of linkedServices) {
+      await tx.delete(serviceResources).where(eq(serviceResources.serviceId, s.id))
+      await tx.delete(services).where(eq(services.id, s.id))
+    }
+
+    // 3. Limpiar reservas provisionales asociadas a los conciertos del artista
+    if (concertIds.length > 0) {
+      await tx
+        .delete(eventProvisionalBookings)
+        .where(inArray(eventProvisionalBookings.concertId, concertIds))
+    }
+
+    // 4. Limpiar ofertas y contratos
+    await tx.delete(concertOffers).where(eq(concertOffers.artistId, artistId))
+    await tx.delete(contracts).where(eq(contracts.artistId, artistId))
+
+    // 5. Limpiar packs de servicios digitales
+    await tx.delete(artistDigitalServices).where(eq(artistDigitalServices.artistId, artistId))
+
+    // 6. Limpiar piezas multimedia y vídeos asociados al artista o a sus conciertos (sin huérfanos)
+    await tx
+      .delete(flamencoMediaAssets)
+      .where(
+        concertIds.length > 0
+          ? or(
+              eq(flamencoMediaAssets.artistId, artistId),
+              inArray(flamencoMediaAssets.concertId, concertIds),
+            )
+          : eq(flamencoMediaAssets.artistId, artistId),
+      )
+
+    // 7. Limpiar conciertos del intérprete
+    if (concertIds.length > 0) {
+      await tx.delete(concerts).where(inArray(concerts.id, concertIds))
+    }
+
+    // 8. Eliminar finalmente el registro maestro del intérprete
+    const [del] = await tx.delete(artists).where(eq(artists.id, artistId)).returning()
+    if (!del) throw new NotFoundError("Intérprete no encontrado.")
+    return del
+  })
+
   await ensureUnifiedServicesAndSingleAgent().catch(() => {})
   return deleted
 }
@@ -2813,19 +2870,22 @@ export async function updateFlamencoRepresentative(actor: Actor, rawInput: unkno
 
 export async function deleteFlamencoRepresentative(actor: Actor, repId: string) {
   assertCan(actor, PERMISSIONS.campaigns.manage)
-  await db
-    .update(artists)
-    .set({ representativeId: null })
-    .where(eq(artists.representativeId, repId))
-  await db
-    .update(concerts)
-    .set({ representativeId: null })
-    .where(eq(concerts.representativeId, repId))
-  const [deleted] = await db
-    .delete(representatives)
-    .where(eq(representatives.id, repId))
-    .returning()
-  if (!deleted) throw new NotFoundError("Representante no encontrado.")
+  const deleted = await db.transaction(async (tx) => {
+    await tx
+      .update(artists)
+      .set({ representativeId: null })
+      .where(eq(artists.representativeId, repId))
+    await tx
+      .update(concerts)
+      .set({ representativeId: null })
+      .where(eq(concerts.representativeId, repId))
+    const [del] = await tx
+      .delete(representatives)
+      .where(eq(representatives.id, repId))
+      .returning()
+    if (!del) throw new NotFoundError("Representante no encontrado.")
+    return del
+  })
   return deleted
 }
 
@@ -2867,10 +2927,13 @@ export async function updateFlamencoVenue(actor: Actor, rawInput: unknown) {
 
 export async function deleteFlamencoVenue(actor: Actor, venueId: string) {
   assertCan(actor, PERMISSIONS.campaigns.manage)
-  await db.update(concerts).set({ venueId: null }).where(eq(concerts.venueId, venueId))
-  await db.update(services).set({ venueId: null }).where(eq(services.venueId, venueId))
-  const [deleted] = await db.delete(venues).where(eq(venues.id, venueId)).returning()
-  if (!deleted) throw new NotFoundError("Sala o entidad no encontrada.")
+  const deleted = await db.transaction(async (tx) => {
+    await tx.update(concerts).set({ venueId: null }).where(eq(concerts.venueId, venueId))
+    await tx.update(services).set({ venueId: null }).where(eq(services.venueId, venueId))
+    const [del] = await tx.delete(venues).where(eq(venues.id, venueId)).returning()
+    if (!del) throw new NotFoundError("Sala o entidad no encontrada.")
+    return del
+  })
   return deleted
 }
 
@@ -2928,16 +2991,21 @@ export async function updateFlamencoConcert(actor: Actor, rawInput: unknown) {
 
 export async function deleteFlamencoConcert(actor: Actor, concertId: string) {
   assertCan(actor, PERMISSIONS.campaigns.manage)
-  const linkedServices = await db
-    .select({ id: services.id })
-    .from(services)
-    .where(eq(services.concertId, concertId))
-  for (const s of linkedServices) {
-    await db.delete(serviceResources).where(eq(serviceResources.serviceId, s.id))
-    await db.delete(services).where(eq(services.id, s.id))
-  }
-  const [deleted] = await db.delete(concerts).where(eq(concerts.id, concertId)).returning()
-  if (!deleted) throw new NotFoundError("Concierto o evento no encontrado.")
+  const deleted = await db.transaction(async (tx) => {
+    const linkedServices = await tx
+      .select({ id: services.id })
+      .from(services)
+      .where(eq(services.concertId, concertId))
+    for (const s of linkedServices) {
+      await tx.delete(serviceResources).where(eq(serviceResources.serviceId, s.id))
+      await tx.delete(services).where(eq(services.id, s.id))
+    }
+    await tx.delete(eventProvisionalBookings).where(eq(eventProvisionalBookings.concertId, concertId))
+    await tx.delete(flamencoMediaAssets).where(eq(flamencoMediaAssets.concertId, concertId))
+    const [del] = await tx.delete(concerts).where(eq(concerts.id, concertId)).returning()
+    if (!del) throw new NotFoundError("Concierto o evento no encontrado.")
+    return del
+  })
   await ensureUnifiedServicesAndSingleAgent().catch(() => {})
   return deleted
 }
@@ -2978,11 +3046,14 @@ export async function updateArtistDigitalService(actor: Actor, rawInput: unknown
 
 export async function deleteArtistDigitalService(actor: Actor, serviceId: string) {
   assertCan(actor, PERMISSIONS.campaigns.manage)
-  const [deleted] = await db
-    .delete(artistDigitalServices)
-    .where(eq(artistDigitalServices.id, serviceId))
-    .returning()
-  if (!deleted) throw new NotFoundError("Servicio digital no encontrado.")
+  const deleted = await db.transaction(async (tx) => {
+    const [del] = await tx
+      .delete(artistDigitalServices)
+      .where(eq(artistDigitalServices.id, serviceId))
+      .returning()
+    if (!del) throw new NotFoundError("Servicio digital no encontrado.")
+    return del
+  })
   return deleted
 }
 
@@ -3088,9 +3159,12 @@ export async function upsertUnifiedCatalogService(actor: Actor, rawInput: unknow
 
 export async function deleteUnifiedCatalogService(actor: Actor, serviceId: string) {
   assertCan(actor, PERMISSIONS.campaigns.manage)
-  await db.delete(serviceResources).where(eq(serviceResources.serviceId, serviceId))
-  const [deleted] = await db.delete(services).where(eq(services.id, serviceId)).returning()
-  if (!deleted) throw new NotFoundError("Servicio no encontrado.")
+  const deleted = await db.transaction(async (tx) => {
+    await tx.delete(serviceResources).where(eq(serviceResources.serviceId, serviceId))
+    const [del] = await tx.delete(services).where(eq(services.id, serviceId)).returning()
+    if (!del) throw new NotFoundError("Servicio no encontrado.")
+    return del
+  })
   await ensureUnifiedServicesAndSingleAgent().catch(() => {})
   return deleted
 }

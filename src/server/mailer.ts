@@ -65,6 +65,7 @@ export type MailerOptions = {
   /** SMTP settings to use (default: Settings › Correo del sistema). */
   smtp?: SmtpConfig | null;
   createTransport?: (config: SmtpConfig) => MailSender;
+  now?: Date;
 };
 
 export const NOT_CONFIGURED_MESSAGE =
@@ -115,6 +116,7 @@ async function logAttempt(
   status: SystemEmailStatus,
   transport: SystemEmailTransport | null,
   details: { outboxFile?: string; error?: string } = {},
+  now?: Date,
 ): Promise<string> {
   const [row] = await db
     .insert(systemEmails)
@@ -130,6 +132,7 @@ async function logAttempt(
       contactId: email.recipient?.contactId ?? null,
       bookingId: email.recipient?.bookingId ?? null,
       campaignId: email.recipient?.campaignId ?? null,
+      ...(now ? { createdAt: now, updatedAt: now } : {}),
     })
     .returning({ id: systemEmails.id });
   return row.id;
@@ -160,9 +163,9 @@ export async function sendSystemEmail(email: SystemEmail, options: MailerOptions
     try {
       const transport = (options.createTransport ?? smtpTransport)(smtp);
       await transport.sendMail(message(safeEmail, { name: smtp.fromName ?? "", address: smtp.fromEmail }));
-      return { ok: true, via: "smtp", logId: await logAttempt(safeEmail, "sent", "smtp") };
+      return { ok: true, via: "smtp", logId: await logAttempt(safeEmail, "sent", "smtp", {}, options.now) };
     } catch (error) {
-      const logId = await logAttempt(safeEmail, "failed", "smtp", { error: safeErrorMessage(error) });
+      const logId = await logAttempt(safeEmail, "failed", "smtp", { error: safeErrorMessage(error) }, options.now);
       return { ok: false, reason: "send_failed", message: SEND_FAILED_MESSAGE, logId, ...(isAccountRejection(error) ? { accountRejected: true } : {}) };
     }
   }
@@ -170,13 +173,13 @@ export async function sendSystemEmail(email: SystemEmail, options: MailerOptions
   if (isOutboxAllowed()) {
     try {
       const file = await saveToOutbox(safeEmail, options.outboxDir ?? OUTBOX_DIR);
-      return { ok: true, via: "outbox", file, logId: await logAttempt(safeEmail, "saved", "outbox", { outboxFile: file }) };
+      return { ok: true, via: "outbox", file, logId: await logAttempt(safeEmail, "saved", "outbox", { outboxFile: file }, options.now) };
     } catch (error) {
-      const logId = await logAttempt(safeEmail, "failed", "outbox", { error: safeErrorMessage(error) });
+      const logId = await logAttempt(safeEmail, "failed", "outbox", { error: safeErrorMessage(error) }, options.now);
       return { ok: false, reason: "send_failed", message: SEND_FAILED_MESSAGE, logId };
     }
   }
 
-  const logId = await logAttempt(safeEmail, "failed", null, { error: "not_configured" });
+  const logId = await logAttempt(safeEmail, "failed", null, { error: "not_configured" }, options.now);
   return { ok: false, reason: "not_configured", message: NOT_CONFIGURED_MESSAGE, logId };
 }

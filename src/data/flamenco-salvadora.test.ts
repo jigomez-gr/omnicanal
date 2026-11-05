@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest"
+import { eq } from "drizzle-orm"
+import { db } from "@/db"
+import {
+  artistDigitalServices,
+  artists,
+  concerts,
+  eventProvisionalBookings,
+  flamencoMediaAssets,
+  services,
+} from "@/db/schema"
 import {
   createArtistDigitalService,
+  createEventProvisionalBooking,
   createFlamencoArtist,
   createFlamencoConcert,
   createFlamencoMediaAsset,
@@ -251,5 +262,114 @@ describe("Promoción Artística: ABM de Maestros, Servicios Unificados en Agenda
     await deleteFlamencoVenue(ownerActor, venue.id)
     await deleteFlamencoArtist(ownerActor, artist.id)
     await deleteFlamencoRepresentative(ownerActor, rep.id)
+  })
+
+  it("garantiza la integridad relacional maestro-detalle sin registros huérfanos al dar de baja un intérprete", async () => {
+    // 1. Crear intérprete maestro
+    const artist = await createFlamencoArtist(ownerActor, {
+      artisticName: "Niño de la Integridad Relacional",
+      discipline: "cante",
+      biography: "Prueba estricta de borrado en cascada y prevención de huérfanos.",
+      city: "Jerez de la Frontera",
+      cacheEur: 2200,
+    })
+
+    // 2. Crear piezas multimedia dependientes (vídeos)
+    await createFlamencoMediaAsset(ownerActor, {
+      artistId: artist.id,
+      pieceCode: "01_portada_dossier",
+      title: "Vídeo 1 Master-Detail Test",
+      fileUrl: "https://youtube.com/watch?v=dQw4w9WgXcQ",
+    })
+    await createFlamencoMediaAsset(ownerActor, {
+      artistId: artist.id,
+      pieceCode: "02_single_cierre",
+      title: "Vídeo 2 Master-Detail Test",
+      fileUrl: "https://youtube.com/watch?v=dQw4w9WgXcQ",
+    })
+
+    // 3. Crear concierto dependiente
+    const concert = await createFlamencoConcert(ownerActor, {
+      title: "Gala Flamenca Test Integridad",
+      artistId: artist.id,
+      dateAndPlaceTbd: true,
+      provisionalBookingsOpen: true,
+      startsAtIso: new Date(Date.now() + 864000000).toISOString(),
+    })
+
+    // 4. Crear reserva provisional asociada al concierto
+    await createEventProvisionalBooking(ownerActor, {
+      concertId: concert.id,
+      attendeeName: "Espectador de Prueba",
+      attendeePhone: "+34611223344",
+      seats: 3,
+    })
+
+    // 5. Crear pack digital asociado
+    await createArtistDigitalService(ownerActor, {
+      artistId: artist.id,
+      packName: "Pack Digital Integridad",
+      setupFeeEur: 500,
+      monthlyFeeEur: 100,
+    })
+
+    // Comprobar que todos los registros hijos existen antes de la baja
+    const initialMedia = await db
+      .select()
+      .from(flamencoMediaAssets)
+      .where(eq(flamencoMediaAssets.artistId, artist.id))
+    expect(initialMedia.length).toBeGreaterThanOrEqual(2)
+
+    const initialConcerts = await db
+      .select()
+      .from(concerts)
+      .where(eq(concerts.artistId, artist.id))
+    expect(initialConcerts.length).toBe(1)
+
+    const initialPacks = await db
+      .select()
+      .from(artistDigitalServices)
+      .where(eq(artistDigitalServices.artistId, artist.id))
+    expect(initialPacks.length).toBe(1)
+
+    // 6. Ejecutar la baja del maestro (deleteFlamencoArtist)
+    await deleteFlamencoArtist(ownerActor, artist.id)
+
+    // 7. Verificar que NO queda ningún registro huérfano
+    const orphanMedia = await db
+      .select()
+      .from(flamencoMediaAssets)
+      .where(eq(flamencoMediaAssets.artistId, artist.id))
+    expect(orphanMedia.length).toBe(0)
+
+    const orphanConcerts = await db
+      .select()
+      .from(concerts)
+      .where(eq(concerts.artistId, artist.id))
+    expect(orphanConcerts.length).toBe(0)
+
+    const orphanPacks = await db
+      .select()
+      .from(artistDigitalServices)
+      .where(eq(artistDigitalServices.artistId, artist.id))
+    expect(orphanPacks.length).toBe(0)
+
+    const orphanServices = await db
+      .select()
+      .from(services)
+      .where(eq(services.artistId, artist.id))
+    expect(orphanServices.length).toBe(0)
+
+    const orphanBookings = await db
+      .select()
+      .from(eventProvisionalBookings)
+      .where(eq(eventProvisionalBookings.concertId, concert.id))
+    expect(orphanBookings.length).toBe(0)
+
+    const maestro = await db
+      .select()
+      .from(artists)
+      .where(eq(artists.id, artist.id))
+    expect(maestro.length).toBe(0)
   })
 })
