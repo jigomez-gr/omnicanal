@@ -3,6 +3,7 @@ import { desc, eq, inArray } from "drizzle-orm"
 import { z } from "zod"
 import { db } from "@/db"
 import {
+  agents,
   artistDigitalServices,
   artists,
   businessSettings,
@@ -22,6 +23,9 @@ import {
   paymentRecords,
   paymentSettings,
   representatives,
+  resources,
+  serviceResources,
+  services,
   vapiSettings,
   venues,
   zadarmaSmsRespuesta,
@@ -664,6 +668,7 @@ export async function getFlamencoHubSnapshot(actor: Actor) {
         await seedFlamencoInitialData(tx, new Date())
       })
     }
+    await ensureUnifiedServicesAndSingleAgent().catch(() => {})
   }
 
   const [
@@ -677,6 +682,9 @@ export async function getFlamencoHubSnapshot(actor: Actor) {
     offerRows,
     digitalServiceRows,
     hostingerMailbox,
+    serviceRows,
+    vapiRowList,
+    agentRows,
   ] = await Promise.all([
     db.select().from(artists).orderBy(desc(artists.createdAt)),
     db.select().from(representatives).orderBy(desc(representatives.createdAt)),
@@ -688,7 +696,25 @@ export async function getFlamencoHubSnapshot(actor: Actor) {
     db.select().from(concertOffers).orderBy(desc(concertOffers.createdAt)),
     db.select().from(artistDigitalServices).orderBy(desc(artistDigitalServices.createdAt)),
     ensureHostingerMailboxChannel(),
+    db.select().from(services).orderBy(services.sortOrder, desc(services.createdAt)),
+    db.select().from(vapiSettings).limit(1),
+    db.select().from(agents).orderBy(desc(agents.updatedAt)).limit(5),
   ])
+
+  const vapiRow = vapiRowList[0]
+  const evoKey = tryDecryptSecret(vapiRow?.evolutionApiKeyEncrypted)
+  const ycloudKey = tryDecryptSecret(vapiRow?.ycloudApiKeyEncrypted)
+  const metaToken = tryDecryptSecret(vapiRow?.metaAccessTokenEncrypted)
+  const unifiedAgent = agentRows.find((a) => a.audience === "customers") ?? agentRows[0] ?? null
+  const formattedAgentInstructions = unifiedAgent
+    ? [
+        unifiedAgent.instructions?.role,
+        unifiedAgent.instructions?.businessInfo,
+        unifiedAgent.instructions?.freeText,
+      ]
+        .filter(Boolean)
+        .join("\n\n") || "Agente único sincronizado con la Agenda de Soniquete Flamenco."
+    : ""
 
   return {
     artists: artistRows,
@@ -703,6 +729,31 @@ export async function getFlamencoHubSnapshot(actor: Actor) {
     mediaCatalog: FLAMENCO_MEDIA_PIECES,
     digitalPackPresets: ARTIST_DIGITAL_PACK_PRESETS,
     hostingerMailbox,
+    catalogServices: serviceRows,
+    whatsappGateway: {
+      provider: (vapiRow?.whatsappProvider || "evolution") as "evolution" | "ycloud" | "meta",
+      whatsappNumber: vapiRow?.whatsappNumber || "+34648212650",
+      evolutionApiUrl:
+        vapiRow?.evolutionApiUrl || "https://evolution.soniqueteconarte.jigretera.com",
+      evolutionInstanceName: vapiRow?.evolutionInstanceName || "soniquete_flamenco",
+      hasEvolutionApiKey: Boolean(evoKey),
+      maskedEvolutionApiKey: evoKey ? maskSecret(evoKey) : null,
+      hasYcloudApiKey: Boolean(ycloudKey),
+      maskedYcloudApiKey: ycloudKey ? maskSecret(ycloudKey) : null,
+      metaPhoneNumberId: vapiRow?.metaPhoneNumberId || "",
+      metaWabaId: vapiRow?.metaWabaId || "",
+      hasMetaAccessToken: Boolean(metaToken),
+      maskedMetaAccessToken: metaToken ? maskSecret(metaToken) : null,
+      emailAutoBookingEnabled: vapiRow?.emailAutoBookingEnabled ?? true,
+    },
+    unifiedAgent: unifiedAgent
+      ? {
+          id: unifiedAgent.id,
+          name: unifiedAgent.name,
+          active: true,
+          instructions: formattedAgentInstructions,
+        }
+      : null,
   }
 }
 
@@ -971,6 +1022,7 @@ export async function createFlamencoConcert(actor: Actor, rawInput: unknown) {
     })
   }
 
+  await syncConcertToAgendaService(created, artist, venue ?? null)
   return created
 }
 
@@ -2345,5 +2397,925 @@ export async function toggleCallReview(
 
   return updated
 }
+
+// ─── ABM Completo de Maestros (Modificación y Baja) + Sincronización con Agenda y Agente Único ───────────────
+
+async function ensureDefaultAgendaResourceId(): Promise<string> {
+  const [existing] = await db
+    .select({ id: resources.id })
+    .from(resources)
+    .where(eq(resources.active, true))
+    .limit(1)
+  if (existing) return existing.id
+
+  const [created] = await db
+    .insert(resources)
+    .values({
+      type: "room",
+      name: "Producción y Escenario Soniquete Flamenco",
+      color: "amber",
+      capacity: 150,
+      active: true,
+      sortOrder: 0,
+    })
+    .returning({ id: resources.id })
+  return created.id
+}
+
+export async function syncConcertToAgendaService(
+  concert: typeof concerts.$inferSelect,
+  artist?: typeof artists.$inferSelect | null,
+  venue?: typeof venues.$inferSelect | null,
+) {
+  const resourceId = await ensureDefaultAgendaResourceId()
+  const artistRow =
+    artist ??
+    (
+      await db
+        .select()
+        .from(artists)
+        .where(eq(artists.id, concert.artistId))
+        .limit(1)
+    )[0]
+  const venueRow =
+    venue ??
+    (concert.venueId
+      ? (
+          await db
+            .select()
+            .from(venues)
+            .where(eq(venues.id, concert.venueId))
+            .limit(1)
+        )[0]
+      : null)
+
+  const categoryMap: Record<string, string> = {
+    concierto: "Conciertos y Galas Flamencas",
+    viaje_flamenco: "Viajes Culturales Flamencos",
+    conferencia: "Conferencias Ilustradas y Ateneos",
+    entrevista_publica: "Conferencias Ilustradas y Ateneos",
+    masterclass_taller: "Masterclasses y Talleres",
+    encuentro_artista: "Encuentros con el Artista",
+    otro: "Actividades Flamencas",
+  }
+
+  const category = categoryMap[concert.eventKind] || "Conciertos y Galas Flamencas"
+  const dateLabel = concert.dateAndPlaceTbd
+    ? concert.tentativeDateText || "Fecha y lugar por confirmar (reservas provisionales abiertas)"
+    : `${concert.startsAt.toLocaleDateString("es-ES")} · ${concert.showTime} h${venueRow ? ` (${venueRow.name}, ${venueRow.city})` : ""}`
+
+  const descriptionText = [
+    `${concert.title}`,
+    artistRow ? `Intérprete: ${artistRow.artisticName} (${artistRow.discipline})` : null,
+    concert.guitaristName ? `Guitarra: ${concert.guitaristName}` : null,
+    concert.lineupDetails ? `Formación: ${concert.lineupDetails}` : null,
+    venueRow ? `Lugar: ${venueRow.name} (${venueRow.city})` : "Lugar por definir",
+    concert.cancelIfBelowMinAttendees && concert.minAttendees > 0
+      ? `Quórum mínimo: ${concert.minAttendees} asistentes (actual: ${concert.currentAttendees}).`
+      : null,
+    concert.notes || null,
+  ]
+    .filter(Boolean)
+    .join(" · ")
+
+  const flyerDefault =
+    concert.flyerUrl || "/api/media/stream/flyers/flyer-generico-horizontal.png"
+  const videoDefault =
+    concert.videoUrl || "/api/media/stream/services/act-1-presentacion.mp4"
+
+  const values = {
+    name: concert.title,
+    category,
+    serviceType: "event",
+    durationMin: Math.max(15, concert.durationMinutes || 80),
+    price: concert.ticketPriceEur,
+    description: descriptionText,
+    descriptionForAgent: `${descriptionText} · Fecha/Horario: ${dateLabel} · Precio entrada/inscripción: ${concert.ticketPriceEur} € (Caché sala: ${concert.agreedCacheEur} €).`,
+    eventDatesText: dateLabel,
+    scheduleText: `Puertas: ${concert.doorsTime} h · Inicio: ${concert.showTime} h`,
+    sinfechadefinitiva: concert.dateAndPlaceTbd,
+    textosinfechadefinitiva: concert.dateAndPlaceTbd
+      ? concert.tentativeDateText ||
+        "Reserva provisional sin compromiso: te avisaremos por WhatsApp, SMS o correo en cuanto se cierre la fecha y el aforo mínimo."
+      : null,
+    sinpreciodefinitivo: concert.sinpreciodefinitivo ?? false,
+    textosinpreciodefinitivo: concert.textosinpreciodefinitivo ?? null,
+    textoespecifico:
+      concert.textoespecifico ||
+      (concert.cancelIfBelowMinAttendees
+        ? `Quórum mínimo garantizado: ${concert.minAttendees} plazas. Si es reserva provisional, recibirás aviso automático para confirmar.`
+        : "Reserva directa confirmada en la Agenda de Soniquete Flamenco."),
+    flyerUrl: flyerDefault,
+    flyerParticularUrl: concert.flyerParticularUrl || flyerDefault,
+    videoUrl: videoDefault,
+    videoParticularUrl: concert.videoParticularUrl || videoDefault,
+    minPeople: Math.max(1, concert.minAttendees > 0 ? 1 : 1),
+    maxPeople: Math.max(10, venueRow?.capacity || 150),
+    requiresManualConfirmation: concert.dateAndPlaceTbd || concert.provisionalBookingsOpen,
+    active: concert.status !== "cancelado",
+    allowedModalities: ["in_person", "phone", "video"],
+    artistId: concert.artistId,
+    venueId: concert.venueId,
+    concertId: concert.id,
+    updatedAt: new Date(),
+  }
+
+  const [existingByConcert] = await db
+    .select()
+    .from(services)
+    .where(eq(services.concertId, concert.id))
+    .limit(1)
+
+  let serviceId: string
+  if (existingByConcert) {
+    await db
+      .update(services)
+      .set(values)
+      .where(eq(services.id, existingByConcert.id))
+    serviceId = existingByConcert.id
+  } else {
+    const [createdSvc] = await db
+      .insert(services)
+      .values({
+        ...values,
+        sortOrder: 10,
+      })
+      .returning({ id: services.id })
+    serviceId = createdSvc.id
+  }
+
+  if (concert.serviceId !== serviceId) {
+    await db
+      .update(concerts)
+      .set({ serviceId, updatedAt: new Date() })
+      .where(eq(concerts.id, concert.id))
+  }
+
+  await db
+    .insert(serviceResources)
+    .values({
+      serviceId,
+      resourceId,
+    })
+    .onConflictDoNothing()
+
+  return serviceId
+}
+
+export async function ensureUnifiedServicesAndSingleAgent() {
+  const resourceId = await ensureDefaultAgendaResourceId()
+  const allConcerts = await db.select().from(concerts)
+  for (const c of allConcerts) {
+    await syncConcertToAgendaService(c)
+  }
+
+  const existingServices = await db.select().from(services)
+  const hasHiringService = existingServices.some((s) =>
+    s.name.toLowerCase().includes("contratación artística"),
+  )
+  if (!hasHiringService) {
+    const [svc1] = await db
+      .insert(services)
+      .values({
+        name: "Reunión de Contratación Artística (Salas, Ateneos y Ayuntamientos)",
+        category: "Contratación para Salas y Promotores",
+        serviceType: "recurring",
+        durationMin: 45,
+        price: 0,
+        description:
+          "Reunión personalizada (videollamada Cal.com, telefónica o presencial en Madrid) para presentar el catálogo de cante, toque y cuadro flamenco, cachés, fechas disponibles y el pack de 9 vídeos promocionales.",
+        descriptionForAgent:
+          "Cita gratuita de 45 min para programadores de salas, tablaos, ateneos y concejalías de cultura. Permite cerrar fechas, presupuesto y envío del pack de 9 vídeos.",
+        scheduleText: "Lunes a Viernes · 10:00 a 20:00 h",
+        flyerUrl: "/api/media/stream/flyers/flyer-generico-horizontal.png",
+        videoUrl: "/api/media/stream/services/act-1-presentacion.mp4",
+        textoespecifico:
+          "Atención directa con dirección artística de soniqueteflamenco.com (Manuel Montoya y Elena Vargas).",
+        allowedModalities: ["video", "phone", "in_person"],
+        minPeople: 1,
+        maxPeople: 5,
+        active: true,
+        sortOrder: 1,
+      })
+      .returning({ id: services.id })
+    await db
+      .insert(serviceResources)
+      .values({ serviceId: svc1.id, resourceId })
+      .onConflictDoNothing()
+  }
+
+  const hasDigitalService = existingServices.some((s) =>
+    s.name.toLowerCase().includes("pack estrella flamenca 360"),
+  )
+  if (!hasDigitalService) {
+    const [svc2] = await db
+      .insert(services)
+      .values({
+        name: "Sesión de Diagnóstico · Pack Estrella Flamenca 360º para Artistas",
+        category: "Servicios Digitales a Artistas",
+        serviceType: "recurring",
+        durationMin: 60,
+        price: 0,
+        description:
+          "Sesión de asesoría para cantaores, guitarristas y bailaores que quieren su propia Landing, Agente IA de contratación 24/7 en WhatsApp/VAPI/Telegram y rodaje del Pack de 9 Vídeos (.mp4).",
+        descriptionForAgent:
+          "Sesión de diagnóstico para artistas flamencos interesados en los packs digitales de soniqueteflamenco.com (desde 390 € hasta 950 € de alta).",
+        scheduleText: "Martes y Jueves · 11:00 a 19:00 h",
+        flyerUrl: "/api/media/stream/flyers/flyer-generico-vertical.png",
+        videoUrl: "/api/media/stream/services/act-2-presentacion.mp4",
+        textoespecifico:
+          "Incluye demostración en vivo de landing artística, pack de 9 vídeos y asistente omnicanal.",
+        allowedModalities: ["video", "phone", "in_person"],
+        minPeople: 1,
+        maxPeople: 3,
+        active: true,
+        sortOrder: 2,
+      })
+      .returning({ id: services.id })
+    await db
+      .insert(serviceResources)
+      .values({ serviceId: svc2.id, resourceId })
+      .onConflictDoNothing()
+  }
+
+  // Sincronizar el Agente Único de Atención y Reservas con el catálogo vivo
+  const [allArtists, allServices] = await Promise.all([
+    db.select().from(artists),
+    db.select().from(services).where(eq(services.active, true)),
+  ])
+
+  const catalogInstructions = [
+    "Eres Lucía, el Agente Único de Atención y Reservas de soniqueteflamenco.com (Promoción Flamenca y Servicios Digitales).",
+    "Atiendes por igual los 5 canales activos de reserva: Landing Web, WhatsApp (Evolution API / YCloud / Meta), Telegram, Voz VAPI y Correo Electrónico (Hostinger).",
+    "Nunca inventes precios, fechas ni condiciones: usa siempre el catálogo unificado de servicios, conciertos e intérpretes de la Agenda.",
+    "",
+    "INTÉRPRETES EN CATÁLOGO:",
+    ...allArtists.map(
+      (a) =>
+        `- ${a.artisticName} (${a.discipline}): Caché base ${a.baseCacheEur} € (mín. ${a.minCacheEur} €). Guitarra titular: ${a.leadGuitarist || "a elegir"}. Formación: ${a.groupFormation}.`,
+    ),
+    "",
+    "SERVICIOS, CONCIERTOS Y ACTIVIDADES RESERVABLES EN AGENDA:",
+    ...allServices.map(
+      (s) =>
+        `- ${s.name} [${s.category || "General"}] (${s.serviceType === "event" ? "Evento/Concierto" : "Cita recurrente"}, ${s.durationMin} min, ${s.price ?? 0} €): ${s.eventDatesText || s.scheduleText || "Horario según agenda"}. ${s.sinfechadefinitiva ? "ADMITE RESERVA PROVISIONAL SIN FECHA FIJA." : ""}`,
+    ),
+  ].join("\n")
+
+  const existingAgents = await db.select().from(agents)
+  const externalAgent = existingAgents.find((a) => a.audience === "customers")
+  if (externalAgent) {
+    await db
+      .update(agents)
+      .set({
+        name: "Agente Único de Atención y Reservas · Soniquete Flamenco",
+        instructions: {
+          ...externalAgent.instructions,
+          role: "Agente Único de Atención y Reservas de soniqueteflamenco.com (Landing, WhatsApp Evolution/YCloud/Meta, Telegram, VAPI y Correo).",
+          freeText: catalogInstructions,
+        },
+        updatedAt: new Date(),
+      })
+      .where(eq(agents.id, externalAgent.id))
+  }
+}
+
+const updateArtistSchema = createArtistSchema.extend({
+  id: z.string().uuid(),
+})
+
+export async function updateFlamencoArtist(actor: Actor, rawInput: unknown) {
+  assertCan(actor, PERMISSIONS.campaigns.manage)
+  const input = parseInput(updateArtistSchema, rawInput)
+
+  const [updated] = await db
+    .update(artists)
+    .set({
+      artisticName: input.artisticName,
+      legalName: input.legalName || null,
+      discipline: input.discipline as ArtistDiscipline,
+      biography: input.biography,
+      styles: input.styles,
+      bringsGroup: input.bringsGroup,
+      groupFormation: input.groupFormation,
+      leadGuitarist: input.leadGuitarist || null,
+      alternateGuitarists: input.alternateGuitarists,
+      baseCacheEur: input.baseCacheEur,
+      minCacheEur: input.minCacheEur,
+      city: input.city,
+      phone: input.phone || null,
+      email: input.email || null,
+      websiteUrl: input.websiteUrl || null,
+      instagramHandle: input.instagramHandle || null,
+      youtubeChannelUrl: input.youtubeChannelUrl || null,
+      technicalRider: input.technicalRider || null,
+      representativeId: input.representativeId || null,
+      updatedAt: new Date(),
+    })
+    .where(eq(artists.id, input.id))
+    .returning()
+
+  if (!updated) throw new NotFoundError("Intérprete no encontrado.")
+  await ensureUnifiedServicesAndSingleAgent().catch(() => {})
+  return updated
+}
+
+export async function deleteFlamencoArtist(actor: Actor, artistId: string) {
+  assertCan(actor, PERMISSIONS.campaigns.manage)
+  await db.delete(services).where(eq(services.artistId, artistId))
+  const [deleted] = await db.delete(artists).where(eq(artists.id, artistId)).returning()
+  if (!deleted) throw new NotFoundError("Intérprete no encontrado.")
+  await ensureUnifiedServicesAndSingleAgent().catch(() => {})
+  return deleted
+}
+
+const updateMediaAssetSchema = createMediaAssetSchema.extend({
+  id: z.string().uuid(),
+})
+
+export async function updateFlamencoMediaAsset(actor: Actor, rawInput: unknown) {
+  assertCan(actor, PERMISSIONS.campaigns.manage)
+  const input = parseInput(updateMediaAssetSchema, rawInput)
+
+  const detectedYtId = extractYouTubeVideoId(input.fileUrl)
+  const effectivePlatform: MediaSourcePlatform =
+    detectedYtId && input.sourcePlatform === "plataforma"
+      ? "youtube"
+      : (input.sourcePlatform as MediaSourcePlatform)
+
+  const [updated] = await db
+    .update(flamencoMediaAssets)
+    .set({
+      artistId: input.artistId || null,
+      concertId: input.concertId || null,
+      pieceCode: input.pieceCode as FlamencoMediaPieceCode,
+      customPieceLabel: input.customPieceLabel || null,
+      sourcePlatform: effectivePlatform,
+      youtubeVideoId: detectedYtId,
+      title: input.title,
+      formatLabel: input.formatLabel,
+      durationSeconds: input.durationSeconds ?? null,
+      maxSizeMb: input.maxSizeMb ?? null,
+      dimensions: input.dimensions,
+      recommendedUse: input.recommendedUse,
+      fileUrl: input.fileUrl,
+      thumbnailUrl:
+        input.thumbnailUrl ||
+        (detectedYtId ? `https://img.youtube.com/vi/${detectedYtId}/hqdefault.jpg` : null),
+      releasePhase: input.releasePhase,
+      updatedAt: new Date(),
+    })
+    .where(eq(flamencoMediaAssets.id, input.id))
+    .returning()
+
+  if (!updated) throw new NotFoundError("Pieza multimedia no encontrada.")
+  return updated
+}
+
+export async function deleteFlamencoMediaAsset(actor: Actor, mediaId: string) {
+  assertCan(actor, PERMISSIONS.campaigns.manage)
+  const [deleted] = await db
+    .delete(flamencoMediaAssets)
+    .where(eq(flamencoMediaAssets.id, mediaId))
+    .returning()
+  if (!deleted) throw new NotFoundError("Pieza multimedia no encontrada.")
+  return deleted
+}
+
+const updateRepresentativeSchema = createRepresentativeSchema.extend({
+  id: z.string().uuid(),
+})
+
+export async function updateFlamencoRepresentative(actor: Actor, rawInput: unknown) {
+  assertCan(actor, PERMISSIONS.campaigns.manage)
+  const input = parseInput(updateRepresentativeSchema, rawInput)
+
+  const [updated] = await db
+    .update(representatives)
+    .set({
+      fullName: input.fullName,
+      agencyName: input.agencyName || null,
+      roleKind: input.roleKind,
+      commissionPercent: input.commissionPercent,
+      phone: input.phone || null,
+      email: input.email || null,
+      websiteUrl: input.websiteUrl || null,
+      city: input.city,
+      notes: input.notes || null,
+      updatedAt: new Date(),
+    })
+    .where(eq(representatives.id, input.id))
+    .returning()
+
+  if (!updated) throw new NotFoundError("Representante no encontrado.")
+  return updated
+}
+
+export async function deleteFlamencoRepresentative(actor: Actor, repId: string) {
+  assertCan(actor, PERMISSIONS.campaigns.manage)
+  await db
+    .update(artists)
+    .set({ representativeId: null })
+    .where(eq(artists.representativeId, repId))
+  await db
+    .update(concerts)
+    .set({ representativeId: null })
+    .where(eq(concerts.representativeId, repId))
+  const [deleted] = await db
+    .delete(representatives)
+    .where(eq(representatives.id, repId))
+    .returning()
+  if (!deleted) throw new NotFoundError("Representante no encontrado.")
+  return deleted
+}
+
+const updateVenueSchema = createVenueSchema.extend({
+  id: z.string().uuid(),
+})
+
+export async function updateFlamencoVenue(actor: Actor, rawInput: unknown) {
+  assertCan(actor, PERMISSIONS.campaigns.manage)
+  const input = parseInput(updateVenueSchema, rawInput)
+
+  const [updated] = await db
+    .update(venues)
+    .set({
+      name: input.name,
+      kind: input.kind as VenueKind,
+      city: input.city,
+      province: input.province,
+      country: input.country,
+      address: input.address || null,
+      capacity: input.capacity,
+      typicalBudgetEur: input.typicalBudgetEur,
+      programmerName: input.programmerName || null,
+      email: input.email || null,
+      phone: input.phone || null,
+      websiteUrl: input.websiteUrl || null,
+      instagramHandle: input.instagramHandle || null,
+      technicalEquipment: input.technicalEquipment || null,
+      notes: input.notes || null,
+      updatedAt: new Date(),
+    })
+    .where(eq(venues.id, input.id))
+    .returning()
+
+  if (!updated) throw new NotFoundError("Sala o entidad no encontrada.")
+  await ensureUnifiedServicesAndSingleAgent().catch(() => {})
+  return updated
+}
+
+export async function deleteFlamencoVenue(actor: Actor, venueId: string) {
+  assertCan(actor, PERMISSIONS.campaigns.manage)
+  await db.update(concerts).set({ venueId: null }).where(eq(concerts.venueId, venueId))
+  await db.update(services).set({ venueId: null }).where(eq(services.venueId, venueId))
+  const [deleted] = await db.delete(venues).where(eq(venues.id, venueId)).returning()
+  if (!deleted) throw new NotFoundError("Sala o entidad no encontrada.")
+  return deleted
+}
+
+const updateConcertSchema = createConcertSchema.extend({
+  id: z.string().uuid(),
+})
+
+export async function updateFlamencoConcert(actor: Actor, rawInput: unknown) {
+  assertCan(actor, PERMISSIONS.campaigns.manage)
+  const input = parseInput(updateConcertSchema, rawInput)
+
+  const [existing] = await db.select().from(concerts).where(eq(concerts.id, input.id)).limit(1)
+  if (!existing) throw new NotFoundError("Concierto o evento no encontrado.")
+
+  const cleanVenueId = input.venueId?.trim() || null
+  const nextStartsAt = input.startsAtIso?.trim()
+    ? new Date(input.startsAtIso)
+    : existing.startsAt
+
+  const [updated] = await db
+    .update(concerts)
+    .set({
+      title: input.title,
+      eventKind: input.eventKind as EventKind,
+      artistId: input.artistId,
+      venueId: cleanVenueId,
+      representativeId: input.representativeId || null,
+      startsAt: nextStartsAt,
+      dateAndPlaceTbd: input.dateAndPlaceTbd,
+      provisionalBookingsOpen: input.dateAndPlaceTbd ? true : input.provisionalBookingsOpen,
+      autoNotifyToConfirm: input.autoNotifyToConfirm,
+      cancelIfBelowMinAttendees: input.cancelIfBelowMinAttendees,
+      minAttendees: input.minAttendees,
+      currentAttendees: input.currentAttendees,
+      soundcheckTime: input.soundcheckTime,
+      doorsTime: input.doorsTime,
+      showTime: input.showTime,
+      durationMinutes: input.durationMinutes,
+      agreedCacheEur: input.agreedCacheEur,
+      ticketPriceEur: input.ticketPriceEur,
+      bringsGroup: input.bringsGroup,
+      guitaristName: input.guitaristName || null,
+      lineupDetails: input.lineupDetails || null,
+      status: input.status,
+      notes: input.notes || null,
+      updatedAt: new Date(),
+    })
+    .where(eq(concerts.id, input.id))
+    .returning()
+
+  await syncConcertToAgendaService(updated)
+  await ensureUnifiedServicesAndSingleAgent().catch(() => {})
+  return updated
+}
+
+export async function deleteFlamencoConcert(actor: Actor, concertId: string) {
+  assertCan(actor, PERMISSIONS.campaigns.manage)
+  const linkedServices = await db
+    .select({ id: services.id })
+    .from(services)
+    .where(eq(services.concertId, concertId))
+  for (const s of linkedServices) {
+    await db.delete(serviceResources).where(eq(serviceResources.serviceId, s.id))
+    await db.delete(services).where(eq(services.id, s.id))
+  }
+  const [deleted] = await db.delete(concerts).where(eq(concerts.id, concertId)).returning()
+  if (!deleted) throw new NotFoundError("Concierto o evento no encontrado.")
+  await ensureUnifiedServicesAndSingleAgent().catch(() => {})
+  return deleted
+}
+
+const updateArtistDigitalServiceSchema = createArtistDigitalServiceSchema.extend({
+  id: z.string().uuid(),
+})
+
+export async function updateArtistDigitalService(actor: Actor, rawInput: unknown) {
+  assertCan(actor, PERMISSIONS.campaigns.manage)
+  const input = parseInput(updateArtistDigitalServiceSchema, rawInput)
+
+  const [updated] = await db
+    .update(artistDigitalServices)
+    .set({
+      artistId: input.artistId,
+      packName: input.packName,
+      status: input.status,
+      includesLanding: input.includesLanding,
+      landingDomain: input.landingDomain || null,
+      includesAiAgent: input.includesAiAgent,
+      includesWhatsappChannel: input.includesWhatsappChannel,
+      includesTelegramBot: input.includesTelegramBot,
+      includesInstagramSetup: input.includesInstagramSetup,
+      includesYoutubeChannel: input.includesYoutubeChannel,
+      includesNineVideosPack: input.includesNineVideosPack,
+      setupFeeEur: input.setupFeeEur,
+      monthlyFeeEur: input.monthlyFeeEur,
+      notes: input.notes || null,
+      updatedAt: new Date(),
+    })
+    .where(eq(artistDigitalServices.id, input.id))
+    .returning()
+
+  if (!updated) throw new NotFoundError("Servicio digital no encontrado.")
+  return updated
+}
+
+export async function deleteArtistDigitalService(actor: Actor, serviceId: string) {
+  assertCan(actor, PERMISSIONS.campaigns.manage)
+  const [deleted] = await db
+    .delete(artistDigitalServices)
+    .where(eq(artistDigitalServices.id, serviceId))
+    .returning()
+  if (!deleted) throw new NotFoundError("Servicio digital no encontrado.")
+  return deleted
+}
+
+// ─── ABM del Catálogo Unificado de Servicios y Actividades (Agenda + Landing + VAPI + WhatsApp) ──────────────
+
+const unifiedCatalogServiceSchema = z.object({
+  id: z.string().uuid().optional().nullable(),
+  name: z.string().trim().min(1, "El nombre del servicio o actividad es obligatorio.").max(200),
+  category: z.string().trim().max(140).default("Conciertos y Galas Flamencas"),
+  serviceType: z.enum(["recurring", "event"]).default("event"),
+  durationMin: z.number().int().min(10).max(10_080).default(80),
+  price: z.number().min(0).max(500_000).default(25),
+  description: z.string().trim().max(3000).default(""),
+  eventDatesText: z.string().trim().max(300).optional().nullable(),
+  scheduleText: z.string().trim().max(300).optional().nullable(),
+  sinfechadefinitiva: z.boolean().default(false),
+  textosinfechadefinitiva: z.string().trim().max(500).optional().nullable(),
+  sinpreciodefinitivo: z.boolean().default(false),
+  textosinpreciodefinitivo: z.string().trim().max(500).optional().nullable(),
+  textoespecifico: z.string().trim().max(1000).optional().nullable(),
+  flyerUrl: z.string().trim().max(500).optional().nullable(),
+  flyerParticularUrl: z.string().trim().max(500).optional().nullable(),
+  videoUrl: z.string().trim().max(500).optional().nullable(),
+  videoParticularUrl: z.string().trim().max(500).optional().nullable(),
+  minPeople: z.number().int().min(1).max(50_000).default(1),
+  maxPeople: z.number().int().min(1).max(100_000).default(120),
+  active: z.boolean().default(true),
+  artistId: z.string().uuid().optional().nullable().or(z.literal("")),
+  venueId: z.string().uuid().optional().nullable().or(z.literal("")),
+})
+
+export async function upsertUnifiedCatalogService(actor: Actor, rawInput: unknown) {
+  assertCan(actor, PERMISSIONS.campaigns.manage)
+  const input = parseInput(unifiedCatalogServiceSchema, rawInput)
+  const resourceId = await ensureDefaultAgendaResourceId()
+
+  const values = {
+    name: input.name,
+    category: input.category,
+    serviceType: input.serviceType,
+    durationMin: input.durationMin,
+    price: input.price,
+    description: input.description,
+    descriptionForAgent: `${input.name} (${input.category}) · ${input.description} · Horario/Fechas: ${input.eventDatesText || input.scheduleText || "Consultar agenda"} · Precio: ${input.sinpreciodefinitivo ? input.textosinpreciodefinitivo || "A consultar" : `${input.price} €`}`,
+    eventDatesText: input.eventDatesText || null,
+    scheduleText: input.scheduleText || null,
+    sinfechadefinitiva: input.sinfechadefinitiva,
+    textosinfechadefinitiva: input.textosinfechadefinitiva || null,
+    sinpreciodefinitivo: input.sinpreciodefinitivo,
+    textosinpreciodefinitivo: input.textosinpreciodefinitivo || null,
+    textoespecifico: input.textoespecifico || null,
+    flyerUrl: input.flyerUrl || "/api/media/stream/flyers/flyer-generico-horizontal.png",
+    flyerParticularUrl:
+      input.flyerParticularUrl ||
+      input.flyerUrl ||
+      "/api/media/stream/flyers/flyer-generico-horizontal.png",
+    videoUrl: input.videoUrl || "/api/media/stream/services/act-1-presentacion.mp4",
+    videoParticularUrl:
+      input.videoParticularUrl ||
+      input.videoUrl ||
+      "/api/media/stream/services/act-1-presentacion.mp4",
+    minPeople: input.minPeople,
+    maxPeople: Math.max(input.minPeople, input.maxPeople),
+    requiresManualConfirmation: input.sinfechadefinitiva,
+    active: input.active,
+    allowedModalities: ["in_person", "phone", "video"],
+    artistId: input.artistId?.trim() || null,
+    venueId: input.venueId?.trim() || null,
+    updatedAt: new Date(),
+  }
+
+  let saved: typeof services.$inferSelect
+  if (input.id) {
+    const [updated] = await db
+      .update(services)
+      .set(values)
+      .where(eq(services.id, input.id))
+      .returning()
+    if (!updated) throw new NotFoundError("Servicio de catálogo no encontrado.")
+    saved = updated
+  } else {
+    const [created] = await db
+      .insert(services)
+      .values({
+        ...values,
+        sortOrder: 5,
+      })
+      .returning()
+    saved = created
+  }
+
+  await db
+    .insert(serviceResources)
+    .values({
+      serviceId: saved.id,
+      resourceId,
+    })
+    .onConflictDoNothing()
+
+  await ensureUnifiedServicesAndSingleAgent().catch(() => {})
+  return saved
+}
+
+export async function deleteUnifiedCatalogService(actor: Actor, serviceId: string) {
+  assertCan(actor, PERMISSIONS.campaigns.manage)
+  await db.delete(serviceResources).where(eq(serviceResources.serviceId, serviceId))
+  const [deleted] = await db.delete(services).where(eq(services.id, serviceId)).returning()
+  if (!deleted) throw new NotFoundError("Servicio no encontrado.")
+  await ensureUnifiedServicesAndSingleAgent().catch(() => {})
+  return deleted
+}
+
+// ─── Pasarela WhatsApp (Evolution API hoy -> YCloud / Meta en el paso 2) + Evaluador IA de Correo ────────────
+
+const updateWhatsappGatewaySchema = z.object({
+  provider: z.enum(["evolution", "ycloud", "meta"]).default("evolution"),
+  whatsappNumber: z.string().trim().min(5).max(40).default("+34648212650"),
+  evolutionApiUrl: z.string().trim().max(300).optional().nullable(),
+  evolutionInstanceName: z.string().trim().max(120).optional().nullable(),
+  evolutionApiKey: z.string().trim().max(300).optional().nullable(),
+  ycloudApiKey: z.string().trim().max(300).optional().nullable(),
+  metaPhoneNumberId: z.string().trim().max(120).optional().nullable(),
+  metaWabaId: z.string().trim().max(120).optional().nullable(),
+  metaAccessToken: z.string().trim().max(400).optional().nullable(),
+  emailAutoBookingEnabled: z.boolean().default(true),
+})
+
+export async function updateWhatsappEvolutionGateway(actor: Actor, rawInput: unknown) {
+  assertCan(actor, PERMISSIONS.campaigns.manage)
+  const input = parseInput(updateWhatsappGatewaySchema, rawInput)
+  const [existing] = await db.select().from(vapiSettings).limit(1)
+
+  const nextEvoKey =
+    input.evolutionApiKey && !input.evolutionApiKey.startsWith("••••")
+      ? encryptSecret(input.evolutionApiKey.trim())
+      : (existing?.evolutionApiKeyEncrypted ?? null)
+
+  const nextYcloudKey =
+    input.ycloudApiKey && !input.ycloudApiKey.startsWith("••••")
+      ? encryptSecret(input.ycloudApiKey.trim())
+      : (existing?.ycloudApiKeyEncrypted ?? null)
+
+  const nextMetaToken =
+    input.metaAccessToken && !input.metaAccessToken.startsWith("••••")
+      ? encryptSecret(input.metaAccessToken.trim())
+      : (existing?.metaAccessTokenEncrypted ?? null)
+
+  if (existing) {
+    await db
+      .update(vapiSettings)
+      .set({
+        whatsappProvider: input.provider,
+        whatsappNumber: input.whatsappNumber,
+        evolutionApiUrl: input.evolutionApiUrl || null,
+        evolutionInstanceName: input.evolutionInstanceName || null,
+        evolutionApiKeyEncrypted: nextEvoKey,
+        ycloudApiKeyEncrypted: nextYcloudKey,
+        metaPhoneNumberId: input.metaPhoneNumberId || null,
+        metaWabaId: input.metaWabaId || null,
+        metaAccessTokenEncrypted: nextMetaToken,
+        emailAutoBookingEnabled: input.emailAutoBookingEnabled,
+        updatedAt: new Date(),
+      })
+      .where(eq(vapiSettings.id, existing.id))
+  } else {
+    await db.insert(vapiSettings).values({
+      whatsappProvider: input.provider,
+      whatsappNumber: input.whatsappNumber,
+      evolutionApiUrl: input.evolutionApiUrl || null,
+      evolutionInstanceName: input.evolutionInstanceName || null,
+      evolutionApiKeyEncrypted: nextEvoKey,
+      ycloudApiKeyEncrypted: nextYcloudKey,
+      metaPhoneNumberId: input.metaPhoneNumberId || null,
+      metaWabaId: input.metaWabaId || null,
+      metaAccessTokenEncrypted: nextMetaToken,
+      emailAutoBookingEnabled: input.emailAutoBookingEnabled,
+    })
+  }
+
+  return {
+    provider: input.provider,
+    whatsappNumber: input.whatsappNumber,
+    emailAutoBookingEnabled: input.emailAutoBookingEnabled,
+  }
+}
+
+const evaluateInboundEmailSchema = z.object({
+  senderName: z.string().trim().min(1).max(160),
+  senderEmail: z.string().trim().email("Correo no válido."),
+  senderPhone: z.string().trim().max(40).optional().nullable(),
+  subject: z.string().trim().min(1).max(240),
+  body: z.string().trim().min(1).max(5000),
+  concertId: z.string().uuid().optional().nullable(),
+  seats: z.number().int().min(1).max(50).default(2),
+})
+
+export async function evaluateInboundEmailForAutoBooking(actor: Actor, rawInput: unknown) {
+  assertCan(actor, PERMISSIONS.campaigns.manage)
+  const input = parseInput(evaluateInboundEmailSchema, rawInput)
+  const lower = `${input.subject} ${input.body}`.toLowerCase()
+
+  const wantsBooking =
+    lower.includes("reservar") ||
+    lower.includes("reserva") ||
+    lower.includes("plaza") ||
+    lower.includes("entrada") ||
+    lower.includes("contratar") ||
+    lower.includes("cita")
+
+  const needsHuman =
+    lower.includes("queja") ||
+    lower.includes("reclamación") ||
+    lower.includes("factura") ||
+    lower.includes("urgente")
+
+  if (needsHuman) {
+    return {
+      decision: "HUMAN_HANDOFF" as const,
+      summary:
+        "El evaluador IA ha detectado una gestión administrativa/contractual sensible y la deriva a atención humana en la Bandeja.",
+      autoReplyPreview: `Hola ${input.senderName}, hemos recibido tu mensaje en dirección de soniqueteflamenco.com. Un responsable de producción te responderá personalmente en breve.`,
+    }
+  }
+
+  if (wantsBooking) {
+    const targetConcert = input.concertId
+      ? (
+          await db
+            .select()
+            .from(concerts)
+            .where(eq(concerts.id, input.concertId))
+            .limit(1)
+        )[0]
+      : (await db.select().from(concerts).orderBy(desc(concerts.startsAt)).limit(1))[0]
+
+    if (targetConcert) {
+      await createEventProvisionalBooking(actor, {
+        concertId: targetConcert.id,
+        attendeeName: input.senderName,
+        attendeeEmail: input.senderEmail,
+        attendeePhone: input.senderPhone || "+34 600 000 000",
+        seats: input.seats,
+        notes: `Reserva creada automáticamente desde correo entrante (${input.subject}) por el Agente Único.`,
+      })
+    }
+
+    return {
+      decision: "AUTO_BOOKING" as const,
+      summary: `Reserva registrada automáticamente (${input.seats} plazas) para «${targetConcert?.title ?? "Actividad en Agenda"}» y sincronizada con el contacto.`,
+      autoReplyPreview: `¡Hola ${input.senderName}! Soy Lucía, del equipo de soniqueteflamenco.com. Hemos dejado registradas tus ${input.seats} plaza(s) para «${targetConcert?.title ?? "nuestra programación flamenca"}». Te enviaremos recordatorio automático por correo y WhatsApp.`,
+    }
+  }
+
+  return {
+    decision: "AUTO_INFO" as const,
+    summary:
+      "El evaluador IA clasifica el correo como consulta informativa sobre el catálogo artístico/servicios y envía respuesta con dossier y enlace de reserva.",
+    autoReplyPreview: `¡Hola ${input.senderName}! Gracias por escribir a soniqueteflamenco.com. Te adjuntamos la información de nuestros conciertos, artistas y packs digitales 360º. Puedes reservar directamente respondiendo a este correo o por nuestro WhatsApp.`,
+  }
+}
+
+export async function getPublicUnifiedServicesCatalog() {
+  await ensureUnifiedServicesAndSingleAgent().catch(() => {})
+  const [serviceRows, vapiRows, businessRows] = await Promise.all([
+    db.select().from(services).where(eq(services.active, true)).orderBy(services.sortOrder),
+    db.select().from(vapiSettings).limit(1),
+    db.select().from(businessSettings).limit(1),
+  ])
+
+  const whatsappNumber = vapiRows[0]?.whatsappNumber || "+34648212650"
+  const businessName = businessRows[0]?.name || "Soniquete con Arte · Promoción Flamenca"
+
+  const mappedServices = serviceRows.map((s) => ({
+    id: s.id,
+    name: s.name,
+    category: s.category || "Conciertos y Galas Flamencas",
+    serviceType: (s.serviceType === "event" ? "event" : "recurring") as "event" | "recurring",
+    durationMinutes: s.durationMin,
+    priceEur: s.price != null ? String(s.price) : "0",
+    description: s.description || s.descriptionForAgent || "",
+    eventDatesText: s.eventDatesText || null,
+    scheduleText: s.scheduleText || "Consultar horarios disponibles",
+    weeklySchedule: s.weeklySchedule || null,
+    flyerUrl: s.flyerUrl || "/api/media/stream/flyers/flyer-generico-horizontal.png",
+    flyerPath: s.flyerPath || null,
+    flyerParticularUrl:
+      s.flyerParticularUrl ||
+      s.flyerUrl ||
+      "/api/media/stream/flyers/flyer-generico-horizontal.png",
+    flyerParticularPath: s.flyerParticularPath || null,
+    videoUrl: s.videoUrl || "/api/media/stream/services/act-1-presentacion.mp4",
+    videoPath: s.videoPath || null,
+    videoParticularUrl:
+      s.videoParticularUrl ||
+      s.videoUrl ||
+      "/api/media/stream/services/act-1-presentacion.mp4",
+    videoParticularPath: s.videoParticularPath || null,
+    textoespecifico: s.textoespecifico || null,
+    fechaDesde: s.fechaDesde || null,
+    fechaHasta: s.fechaHasta || null,
+    sinfechadefinitiva: s.sinfechadefinitiva,
+    textosinfechadefinitiva: s.textosinfechadefinitiva || null,
+    sinpreciodefinitivo: s.sinpreciodefinitivo,
+    textosinpreciodefinitivo: s.textosinpreciodefinitivo || null,
+    paymentType: s.paymentType || "in_person",
+    externalPaymentUrl: s.externalPaymentUrl || null,
+    allowedModalities:
+      Array.isArray(s.allowedModalities) && s.allowedModalities.length > 0
+        ? s.allowedModalities
+        : ["in_person", "phone", "video"],
+    requiresReason: s.requiresReason,
+  }))
+
+  const categoriesMap = new Map<string, typeof mappedServices>()
+  for (const svc of mappedServices) {
+    const list = categoriesMap.get(svc.category) || []
+    list.push(svc)
+    categoriesMap.set(svc.category, list)
+  }
+
+  const categories = Array.from(categoriesMap.entries()).map(([category, items]) => ({
+    category,
+    services: items,
+  }))
+
+  return {
+    success: true,
+    businessName,
+    whatsappNumber,
+    categories,
+    services: mappedServices,
+  }
+}
+
 
 

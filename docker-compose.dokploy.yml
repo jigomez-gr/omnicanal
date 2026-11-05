@@ -1,0 +1,80 @@
+# Stack de Dokploy para el CRM de Soniquete Flamenco (omnicanal)
+# Dominio: https://crm.soniqueteconarte.jigretera.com (Servicio: web, Puerto: 3000)
+# Comparte el volumen multimedia /var/data/soniqueteflamenco/media con la Landing sin duplicar ficheros en Git.
+
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-omnicanal_soniquete}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-W39xlpS9}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - internal
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - db
+    expose:
+      - "3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-W39xlpS9}@db:5432/${POSTGRES_DB:-omnicanal_soniquete}}
+      APP_URL: ${APP_URL:-https://crm.soniqueteconarte.jigretera.com}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-https://crm.soniqueteconarte.jigretera.com}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY}
+      CRON_SECRET: ${CRON_SECRET}
+      SETUP_TOKEN: ${SETUP_TOKEN}
+      DEMO_MODE: ${DEMO_MODE:-false}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-1}
+      MEDIA_STORAGE_ROOT: ${MEDIA_STORAGE_ROOT:-/var/data/soniqueteflamenco/media}
+    volumes:
+      - /var/data/soniqueteflamenco/media:/var/data/soniqueteflamenco/media:rw
+    networks:
+      - internal
+      - dokploy-network
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["node_modules/.bin/tsx", "--conditions=react-server", "scripts/worker.ts"]
+    restart: unless-stopped
+    depends_on:
+      - db
+      - web
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-W39xlpS9}@db:5432/${POSTGRES_DB:-omnicanal_soniquete}}
+      APP_URL: ${APP_URL:-https://crm.soniqueteconarte.jigretera.com}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-https://crm.soniqueteconarte.jigretera.com}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY}
+      CRON_SECRET: ${CRON_SECRET}
+      SETUP_TOKEN: ${SETUP_TOKEN}
+      DEMO_MODE: ${DEMO_MODE:-false}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      EMAIL_IMAP_IDLE: ${EMAIL_IMAP_IDLE:-true}
+      MEDIA_STORAGE_ROOT: ${MEDIA_STORAGE_ROOT:-/var/data/soniqueteflamenco/media}
+    volumes:
+      - /var/data/soniqueteflamenco/media:/var/data/soniqueteflamenco/media:rw
+    networks:
+      - internal
+
+volumes:
+  postgres_data:
+
+networks:
+  internal:
+  dokploy-network:
+    external: true

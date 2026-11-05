@@ -580,6 +580,7 @@ Están todas explicadas en `.env.example`. En local no tienes que tocar ninguna:
 | `FFMPEG_BIN` | Opcional: otro FFmpeg para convertir notas de voz a MP3. Sin ella se usa el que trae el proyecto. |
 | `ALLOW_PRIVATE_MAIL_HOSTS` | Opcional: `true` permite conectar un buzón «Otro (IMAP/SMTP)» a un servidor de correo de la red local (uno propio junto a la app). Sin ella, la app solo se conecta a servidores con dirección pública. |
 | `EMAIL_IMAP_IDLE` | Opcional, solo en un servidor propio con `pnpm worker`: `true` mantiene abierta la conexión IMAP de los buzones que tengan activado «Leer al momento» y lee el correo nuevo en cuanto llega. Sin ella, cada buzón se lee cada minuto. |
+| `SONIQUETE_EMAIL_PASSWORD` | Opcional: contraseña del buzón oficial de Hostinger (`soniqueteflamenco@soniqueteflamenco.com`), que también se puede guardar cifrada desde Promoción Artística › Opción Correo. |
 | `ALLOW_LOCAL_HTTP_TOOLS` | Solo para desarrollo y pruebas: `true` deja a las herramientas HTTP llamar a este ordenador o a la red local (con `pnpm dev` ya se permite). La versión compilada no arranca con ella. |
 | `OPENROUTER_BASE_URL`, `META_GRAPH_BASE_URL`, `GOOGLE_OAUTH_BASE_URL`, `GOOGLE_API_BASE_URL`, `MS_LOGIN_BASE_URL`, `MS_GRAPH_BASE_URL`, `MISTRAL_BASE_URL`, `TELEGRAM_API_BASE_URL`, `YCLOUD_API_BASE_URL` e `INSTAGRAM_GRAPH_BASE_URL` | Solo para las pruebas, que apuntan a un simulador. No las cambies: la versión compilada no arranca con ellas. |
 | `E2E_ALLOW_BASE_URL_OVERRIDES` | Solo la ponen los servidores de Playwright, para arrancar la versión compilada con el simulador. Nunca en una instalación real. |
@@ -868,6 +869,8 @@ Guías para el negocio (también dentro de la app, en Ayuda):
   paso a paso.
 - [Lista de puesta en marcha](docs/checklist-puesta-en-marcha.md): de `pnpm db:fresh` a la primera conversación de un
   negocio real.
+- [Guía de cuentas de Soniquete (Telegram, Meta y Hostinger)](docs/guia-soniquete-cuentas-telegram-meta-hostinger.md):
+  configuración paso a paso de los canales de promoción artística.
 
 Para el negocio, fuera de la app: la [plantilla de contrato de encargo del tratamiento](docs/contrato-encargo-tratamiento.md)
 (revísala con un abogado).

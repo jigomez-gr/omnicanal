@@ -12,11 +12,27 @@ import {
   createFlamencoMediaAsset,
   createFlamencoRepresentative,
   createFlamencoVenue,
+  deleteArtistDigitalService,
+  deleteFlamencoArtist,
+  deleteFlamencoConcert,
+  deleteFlamencoMediaAsset,
+  deleteFlamencoRepresentative,
+  deleteFlamencoVenue,
+  deleteUnifiedCatalogService,
   evaluateEventMinAttendeesCancellation,
+  evaluateInboundEmailForAutoBooking,
   generateFullMediaPackAction,
   notifyProvisionalBookingsToConfirm,
   scrapeWebEntityForFlamenco,
   simulateAndScheduleConcertOffer,
+  updateArtistDigitalService,
+  updateFlamencoArtist,
+  updateFlamencoConcert,
+  updateFlamencoMediaAsset,
+  updateFlamencoRepresentative,
+  updateFlamencoVenue,
+  updateWhatsappEvolutionGateway,
+  upsertUnifiedCatalogService,
 } from "@/data/flamenco"
 import { requireActor } from "@/server/session"
 
@@ -138,3 +154,124 @@ export async function createArtistDigitalServiceAction(input: unknown) {
   revalidatePath("/pagos")
   return res
 }
+
+export async function updateArtistAction(input: unknown) {
+  const actor = await requireActor()
+  const res = await updateFlamencoArtist(actor, input)
+  revalidatePath("/promocion")
+  revalidatePath("/agenda")
+  return res
+}
+
+export async function deleteArtistAction(artistId: string) {
+  const actor = await requireActor()
+  const res = await deleteFlamencoArtist(actor, artistId)
+  revalidatePath("/promocion")
+  revalidatePath("/agenda")
+  return res
+}
+
+export async function updateMediaAssetAction(input: unknown) {
+  const actor = await requireActor()
+  const res = await updateFlamencoMediaAsset(actor, input)
+  revalidatePath("/promocion")
+  return res
+}
+
+export async function deleteMediaAssetAction(mediaId: string) {
+  const actor = await requireActor()
+  const res = await deleteFlamencoMediaAsset(actor, mediaId)
+  revalidatePath("/promocion")
+  return res
+}
+
+export async function updateRepresentativeAction(input: unknown) {
+  const actor = await requireActor()
+  const res = await updateFlamencoRepresentative(actor, input)
+  revalidatePath("/promocion")
+  return res
+}
+
+export async function deleteRepresentativeAction(repId: string) {
+  const actor = await requireActor()
+  const res = await deleteFlamencoRepresentative(actor, repId)
+  revalidatePath("/promocion")
+  return res
+}
+
+export async function updateVenueAction(input: unknown) {
+  const actor = await requireActor()
+  const res = await updateFlamencoVenue(actor, input)
+  revalidatePath("/promocion")
+  return res
+}
+
+export async function deleteVenueAction(venueId: string) {
+  const actor = await requireActor()
+  const res = await deleteFlamencoVenue(actor, venueId)
+  revalidatePath("/promocion")
+  return res
+}
+
+export async function updateConcertAction(input: unknown) {
+  const actor = await requireActor()
+  const res = await updateFlamencoConcert(actor, input)
+  revalidatePath("/promocion")
+  revalidatePath("/agenda")
+  return res
+}
+
+export async function deleteConcertAction(concertId: string) {
+  const actor = await requireActor()
+  const res = await deleteFlamencoConcert(actor, concertId)
+  revalidatePath("/promocion")
+  revalidatePath("/agenda")
+  return res
+}
+
+export async function updateArtistDigitalServiceAction(input: unknown) {
+  const actor = await requireActor()
+  const res = await updateArtistDigitalService(actor, input)
+  revalidatePath("/promocion")
+  return res
+}
+
+export async function deleteArtistDigitalServiceAction(serviceId: string) {
+  const actor = await requireActor()
+  const res = await deleteArtistDigitalService(actor, serviceId)
+  revalidatePath("/promocion")
+  return res
+}
+
+export async function upsertCatalogServiceAction(input: unknown) {
+  const actor = await requireActor()
+  const res = await upsertUnifiedCatalogService(actor, input)
+  revalidatePath("/promocion")
+  revalidatePath("/agenda")
+  return res
+}
+
+export async function deleteCatalogServiceAction(serviceId: string) {
+  const actor = await requireActor()
+  const res = await deleteUnifiedCatalogService(actor, serviceId)
+  revalidatePath("/promocion")
+  revalidatePath("/agenda")
+  return res
+}
+
+export async function updateWhatsappGatewayAction(input: unknown) {
+  const actor = await requireActor()
+  const res = await updateWhatsappEvolutionGateway(actor, input)
+  revalidatePath("/promocion")
+  revalidatePath("/canales")
+  return res
+}
+
+export async function evaluateEmailAutoBookingAction(input: unknown) {
+  const actor = await requireActor()
+  const res = await evaluateInboundEmailForAutoBooking(actor, input)
+  revalidatePath("/promocion")
+  revalidatePath("/agenda")
+  return res
+}
+

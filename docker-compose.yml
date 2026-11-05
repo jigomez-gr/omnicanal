@@ -30,6 +30,10 @@ x-app: &app
     TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-1}
     # true: the worker reads the IMAP mailboxes with «Leer al momento» as mail arrives.
     EMAIL_IMAP_IDLE: ${EMAIL_IMAP_IDLE:-false}
+    # Carpeta persistente de archivos multimedia en el servidor (compartida con la Landing de soniqueteflamenco, fuera de Git).
+    MEDIA_STORAGE_ROOT: ${MEDIA_STORAGE_ROOT:-/var/data/soniqueteflamenco/media}
+  volumes:
+    - ${MEDIA_HOST_PATH:-/var/data/soniqueteflamenco/media}:/var/data/soniqueteflamenco/media:rw
 
 services:
   migrate:
