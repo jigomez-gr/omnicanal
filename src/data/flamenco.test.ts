@@ -546,6 +546,9 @@ describe("Agencia de Promoción Flamenca, Cal.com, Stripe y VAPI/Zadarma", () =>
     expect(artistDetails[0].textoMostrar).toBe("Retrato escénico alta definición")
     expect(artistDetails[1].textoMostrar).toBe("Solo de bulerías en directo")
 
+    expect(snapshot.urls.landingUrl).toBeTruthy()
+    expect(snapshot.urls.crmUrl).toBeTruthy()
+
     // 4. Actualizar un detalle
     const updated = await updateArtistWebMediaDetail(owner.actor, {
       id: detailJpg.id,

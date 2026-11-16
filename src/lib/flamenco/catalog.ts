@@ -1,5 +1,27 @@
-export const FLAMENCO_LANDING_URL = "https://soniqueteflamenco.com"
-export const FLAMENCO_CRM_URL = "https://crm.soniqueteconarte.com"
+export const DEFAULT_FLAMENCO_LANDING_URL = "https://soniqueteflamenco.jigretera.com"
+export const DEFAULT_FLAMENCO_CRM_URL = "https://crm.soniqueteconarte.jigretera.com"
+
+export function getFlamencoLandingUrl(): string {
+  const envVal =
+    (typeof process !== "undefined" &&
+      (process.env.FLAMENCO_LANDING_URL || process.env.NEXT_PUBLIC_FLAMENCO_LANDING_URL)) ||
+    DEFAULT_FLAMENCO_LANDING_URL
+  return envVal.trim().replace(/\/+$/, "")
+}
+
+export function getFlamencoCrmUrl(): string {
+  const envVal =
+    (typeof process !== "undefined" &&
+      (process.env.FLAMENCO_CRM_URL ||
+        process.env.NEXT_PUBLIC_FLAMENCO_CRM_URL ||
+        process.env.APP_URL ||
+        process.env.BETTER_AUTH_URL)) ||
+    DEFAULT_FLAMENCO_CRM_URL
+  return envVal.trim().replace(/\/+$/, "")
+}
+
+export const FLAMENCO_LANDING_URL = getFlamencoLandingUrl()
+export const FLAMENCO_CRM_URL = getFlamencoCrmUrl()
 
 export const FLAMENCO_DETAIL_MIME_TYPES = [".jpg", ".pdf", ".docx", ".mp3", ".mp4"] as const
 export type FlamencoDetailMimeType = (typeof FLAMENCO_DETAIL_MIME_TYPES)[number]

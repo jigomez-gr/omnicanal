@@ -41,6 +41,8 @@ import {
   buildConcertOfferTexts,
   extractYouTubeVideoId,
   FLAMENCO_MEDIA_PIECES,
+  getFlamencoCrmUrl,
+  getFlamencoLandingUrl,
   type ArtistDiscipline,
   type EventKind,
   type FlamencoMediaPieceCode,
@@ -759,6 +761,10 @@ export async function getFlamencoHubSnapshot(actor: Actor) {
     digitalPackPresets: ARTIST_DIGITAL_PACK_PRESETS,
     hostingerMailbox,
     catalogServices: serviceRows,
+    urls: {
+      landingUrl: getFlamencoLandingUrl(),
+      crmUrl: getFlamencoCrmUrl(),
+    },
     whatsappGateway: {
       provider: (vapiRow?.whatsappProvider || "evolution") as "evolution" | "ycloud" | "meta",
       whatsappNumber: vapiRow?.whatsappNumber || "+34648212650",

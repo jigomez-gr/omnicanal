@@ -671,6 +671,25 @@ export function PromocionClient({
     setPackNotes("")
   }
 
+  const landingUrl = snapshot.urls?.landingUrl || FLAMENCO_LANDING_URL
+  const crmUrl = snapshot.urls?.crmUrl || FLAMENCO_CRM_URL
+
+  const landingHostname = (() => {
+    try {
+      return new URL(landingUrl).hostname
+    } catch {
+      return landingUrl
+    }
+  })()
+
+  const crmHostname = (() => {
+    try {
+      return new URL(crmUrl).hostname
+    } catch {
+      return crmUrl
+    }
+  })()
+
   return (
     <div className="space-y-6">
       {/* Cabecera e Identidad Unificada */}
@@ -679,7 +698,7 @@ export function PromocionClient({
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <Badge className="bg-amber-700 text-white hover:bg-amber-800">
-                soniqueteflamenco.com · CRM + Landing + Agenda Unificada
+                {landingHostname} · CRM + Landing + Agenda Unificada
               </Badge>
               <Badge variant="outline" className="border-amber-300 bg-white text-amber-900">
                 5 Canales de Reserva: Landing · WhatsApp ({snapshot.whatsappGateway.provider.toUpperCase()}) · Telegram · VAPI · Email
@@ -693,16 +712,16 @@ export function PromocionClient({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <a href={FLAMENCO_LANDING_URL} target="_blank" rel="noreferrer">
+            <a href={landingUrl} target="_blank" rel="noreferrer">
               <Button variant="outline" size="sm" className="gap-1.5 bg-white">
                 <Globe className="size-4 text-amber-700" />
-                Landing (soniqueteflamenco.com)
+                Landing ({landingHostname})
               </Button>
             </a>
-            <a href={FLAMENCO_CRM_URL} target="_blank" rel="noreferrer">
+            <a href={crmUrl} target="_blank" rel="noreferrer">
               <Button variant="outline" size="sm" className="gap-1.5 bg-white">
                 <Sparkles className="size-4 text-amber-900" />
-                CRM (crm.soniqueteconarte.com)
+                CRM ({crmHostname})
               </Button>
             </a>
             <Link href="/agenda">
@@ -1369,7 +1388,7 @@ export function PromocionClient({
                                   Material Multimedia Web (Master / Detail) · {artist.artisticName}
                                 </p>
                                 <p className="text-[11px] text-sky-800">
-                                  Material publicado en la web (https://soniqueteflamenco.com) para valoración del cliente
+                                  Material publicado en la web ({landingUrl}) para valoración del cliente
                                 </p>
                               </div>
                               <Button
@@ -2091,7 +2110,7 @@ export function PromocionClient({
                             : "Añadir Material Web Detalle (Master / Detail)"}
                         </h3>
                         <p className="text-[11px] text-stone-500">
-                          Recursos para la web (https://soniqueteflamenco.com) para que los clientes valoren contratar al intérprete
+                          Recursos para la web ({landingUrl}) para que los clientes valoren contratar al intérprete
                         </p>
                       </div>
                       {editingDetailId && (
