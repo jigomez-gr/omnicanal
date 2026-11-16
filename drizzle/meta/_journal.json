@@ -99,6 +99,13 @@
       "when": 1793870000000,
       "tag": "0013_salvadora_services_and_evolution",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1794820000000,
+      "tag": "0014_artists_web_media_master_detail",
+      "breakpoints": true
     }
   ]
 }

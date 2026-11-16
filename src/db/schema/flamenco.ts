@@ -26,7 +26,14 @@ export const artists = pgTable(
     email: text("email"),
     websiteUrl: text("website_url"),
     instagramHandle: text("instagram_handle"),
+    instagramUrl: text("instagram_url"),
+    facebookUrl: text("facebook_url"),
+    telegramUrl: text("telegram_url"),
+    tiktokUrl: text("tiktok_url"),
     youtubeChannelUrl: text("youtube_channel_url"),
+    imagenprincipal: text("imagenprincipal"),
+    mimeType: text("mime_type").default(".jpg"),
+    patreal: text("patreal"),
     technicalRider: text("technical_rider"),
     representativeId: text("representative_id"),
     contactId: text("contact_id").references(() => contacts.id, { onDelete: "set null" }),
@@ -206,6 +213,28 @@ export const flamencoMediaAssets = pgTable(
   (t) => [
     index("flamenco_media_artist_idx").on(t.artistId),
     index("flamenco_media_concert_idx").on(t.concertId),
+  ],
+).enableRLS()
+
+export const artistWebMediaDetails = pgTable(
+  "artist_web_media_details",
+  {
+    id: id(),
+    artistId: text("artist_id")
+      .notNull()
+      .references(() => artists.id, { onDelete: "cascade" }),
+    path: text("path").notNull().default(""),
+    tipoMime: text("tipo_mime").notNull().default(".jpg"),
+    pertenecePack: bool("pertenece_pack").notNull().default(false),
+    textoMostrar: text("texto_mostrar").notNull().default(""),
+    tooltip: text("tooltip").notNull().default(""),
+    visibleWeb: bool("visible_web").notNull().default(true),
+    orden: integer("orden").notNull().default(0),
+    ...timestamps(),
+  },
+  (t) => [
+    index("artist_web_media_artist_idx").on(t.artistId),
+    index("artist_web_media_visible_idx").on(t.visibleWeb),
   ],
 ).enableRLS()
 

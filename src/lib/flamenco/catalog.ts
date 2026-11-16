@@ -1,3 +1,17 @@
+export const FLAMENCO_LANDING_URL = "https://soniqueteflamenco.com"
+export const FLAMENCO_CRM_URL = "https://crm.soniqueteconarte.com"
+
+export const FLAMENCO_DETAIL_MIME_TYPES = [".jpg", ".pdf", ".docx", ".mp3", ".mp4"] as const
+export type FlamencoDetailMimeType = (typeof FLAMENCO_DETAIL_MIME_TYPES)[number]
+
+export const FLAMENCO_DETAIL_MIME_LABELS: Record<FlamencoDetailMimeType, string> = {
+  ".jpg": "Imagen (.jpg)",
+  ".pdf": "Documento / Dosier (.pdf)",
+  ".docx": "Documento Word (.docx)",
+  ".mp3": "Audio (.mp3)",
+  ".mp4": "Vídeo (.mp4)",
+}
+
 export type ArtistDiscipline =
   | "cante"
   | "baile"

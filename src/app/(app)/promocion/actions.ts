@@ -5,6 +5,7 @@ import {
   configureHostingerDomainEmail,
   confirmEventProvisionalBooking,
   createArtistDigitalService,
+  createArtistWebMediaDetail,
   createEventProvisionalBooking,
   createFlamencoArtist,
   createFlamencoConcert,
@@ -13,6 +14,7 @@ import {
   createFlamencoRepresentative,
   createFlamencoVenue,
   deleteArtistDigitalService,
+  deleteArtistWebMediaDetail,
   deleteFlamencoArtist,
   deleteFlamencoConcert,
   deleteFlamencoMediaAsset,
@@ -26,6 +28,7 @@ import {
   scrapeWebEntityForFlamenco,
   simulateAndScheduleConcertOffer,
   updateArtistDigitalService,
+  updateArtistWebMediaDetail,
   updateFlamencoArtist,
   updateFlamencoConcert,
   updateFlamencoMediaAsset,
@@ -272,6 +275,27 @@ export async function evaluateEmailAutoBookingAction(input: unknown) {
   const res = await evaluateInboundEmailForAutoBooking(actor, input)
   revalidatePath("/promocion")
   revalidatePath("/agenda")
+  return res
+}
+
+export async function createArtistWebMediaDetailAction(input: unknown) {
+  const actor = await requireActor()
+  const res = await createArtistWebMediaDetail(actor, input)
+  revalidatePath("/promocion")
+  return res
+}
+
+export async function updateArtistWebMediaDetailAction(input: unknown) {
+  const actor = await requireActor()
+  const res = await updateArtistWebMediaDetail(actor, input)
+  revalidatePath("/promocion")
+  return res
+}
+
+export async function deleteArtistWebMediaDetailAction(id: string) {
+  const actor = await requireActor()
+  const res = await deleteArtistWebMediaDetail(actor, id)
+  revalidatePath("/promocion")
   return res
 }
 

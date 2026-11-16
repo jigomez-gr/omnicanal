@@ -1,11 +1,12 @@
 import "server-only"
-import { desc, eq, inArray, or } from "drizzle-orm"
+import { asc, desc, eq, inArray, or } from "drizzle-orm"
 import { z } from "zod"
 import { db } from "@/db"
 import {
   agents,
   artistDigitalServices,
   artists,
+  artistWebMediaDetails,
   businessSettings,
   calcomSettings,
   calls,
@@ -96,6 +97,13 @@ const createArtistSchema = z.object({
   email: z.string().trim().email("Correo no válido.").optional().nullable().or(z.literal("")),
   websiteUrl: z.string().trim().max(300).optional().nullable(),
   instagramHandle: z.string().trim().max(120).optional().nullable(),
+  instagramUrl: z.string().trim().max(300).optional().nullable(),
+  facebookUrl: z.string().trim().max(300).optional().nullable(),
+  telegramUrl: z.string().trim().max(300).optional().nullable(),
+  tiktokUrl: z.string().trim().max(300).optional().nullable(),
+  imagenprincipal: z.string().optional().nullable(),
+  mimeType: z.string().optional().nullable().default(".jpg"),
+  patreal: z.string().trim().max(2000).optional().nullable(),
   youtubeChannelUrl: z.string().trim().max(300).optional().nullable(),
   technicalRider: z.string().trim().max(3000).optional().nullable(),
   representativeId: z.string().uuid().optional().nullable(),
@@ -238,6 +246,24 @@ const createMediaAssetSchema = z.object({
     .enum(["tres_semanas_antes", "semana_antes", "referencia_web", "permanente"])
     .default("referencia_web"),
 })
+
+const createArtistWebMediaDetailSchema = z.object({
+  artistId: z.string().uuid("Debes indicar un intérprete."),
+  path: z.string().trim().min(1, "La ruta o enlace es obligatorio.").max(2000),
+  tipoMime: z.enum([".jpg", ".pdf", ".docx", ".mp3", ".mp4"]).default(".jpg"),
+  pertenecePack: z.boolean().default(false),
+  textoMostrar: z.string().trim().max(300).default(""),
+  tooltip: z.string().trim().max(500).default(""),
+  visibleWeb: z.boolean().default(true),
+  orden: z.number().int().default(0),
+})
+
+const updateArtistWebMediaDetailSchema = createArtistWebMediaDetailSchema
+  .omit({ artistId: true })
+  .partial()
+  .extend({
+    id: z.string().uuid(),
+  })
 
 const simulateOfferSchema = z.object({
   title: z.string().trim().min(1).max(200),
@@ -685,6 +711,7 @@ export async function getFlamencoHubSnapshot(actor: Actor) {
     serviceRows,
     vapiRowList,
     agentRows,
+    detailMediaRows,
   ] = await Promise.all([
     db.select().from(artists).orderBy(desc(artists.createdAt)),
     db.select().from(representatives).orderBy(desc(representatives.createdAt)),
@@ -699,6 +726,7 @@ export async function getFlamencoHubSnapshot(actor: Actor) {
     db.select().from(services).orderBy(services.sortOrder, desc(services.createdAt)),
     db.select().from(vapiSettings).limit(1),
     db.select().from(agents).orderBy(desc(agents.updatedAt)).limit(5),
+    db.select().from(artistWebMediaDetails).orderBy(asc(artistWebMediaDetails.orden), asc(artistWebMediaDetails.createdAt)),
   ])
 
   const vapiRow = vapiRowList[0]
@@ -724,6 +752,7 @@ export async function getFlamencoHubSnapshot(actor: Actor) {
     provisionalBookings: provisionalBookingRows,
     contracts: contractRows,
     mediaAssets: mediaRows,
+    webMediaDetails: detailMediaRows,
     concertOffers: offerRows,
     digitalServices: digitalServiceRows,
     mediaCatalog: FLAMENCO_MEDIA_PIECES,
@@ -790,6 +819,13 @@ export async function createFlamencoArtist(actor: Actor, rawInput: unknown) {
       email: input.email || null,
       websiteUrl: input.websiteUrl || null,
       instagramHandle: input.instagramHandle || null,
+      instagramUrl: input.instagramUrl || null,
+      facebookUrl: input.facebookUrl || null,
+      telegramUrl: input.telegramUrl || null,
+      tiktokUrl: input.tiktokUrl || null,
+      imagenprincipal: input.imagenprincipal || null,
+      mimeType: input.mimeType || ".jpg",
+      patreal: input.patreal || null,
       youtubeChannelUrl: input.youtubeChannelUrl || null,
       technicalRider: input.technicalRider || null,
       representativeId: input.representativeId || null,
@@ -868,6 +904,54 @@ export async function generateFullMediaPackAction(
     subjectName: params.subjectName,
   })
   return { countCreated }
+}
+
+export async function createArtistWebMediaDetail(actor: Actor, rawInput: unknown) {
+  assertCan(actor, PERMISSIONS.campaigns.manage)
+  const input = parseInput(createArtistWebMediaDetailSchema, rawInput)
+  const [created] = await db
+    .insert(artistWebMediaDetails)
+    .values({
+      artistId: input.artistId,
+      path: input.path,
+      tipoMime: input.tipoMime,
+      pertenecePack: input.pertenecePack,
+      textoMostrar: input.textoMostrar,
+      tooltip: input.tooltip,
+      visibleWeb: input.visibleWeb,
+      orden: input.orden,
+    })
+    .returning()
+  return created
+}
+
+export async function updateArtistWebMediaDetail(actor: Actor, rawInput: unknown) {
+  assertCan(actor, PERMISSIONS.campaigns.manage)
+  const input = parseInput(updateArtistWebMediaDetailSchema, rawInput)
+  const patch: Record<string, unknown> = {
+    updatedAt: new Date(),
+  }
+  if (input.path !== undefined) patch.path = input.path
+  if (input.tipoMime !== undefined) patch.tipoMime = input.tipoMime
+  if (input.pertenecePack !== undefined) patch.pertenecePack = input.pertenecePack
+  if (input.textoMostrar !== undefined) patch.textoMostrar = input.textoMostrar
+  if (input.tooltip !== undefined) patch.tooltip = input.tooltip
+  if (input.visibleWeb !== undefined) patch.visibleWeb = input.visibleWeb
+  if (input.orden !== undefined) patch.orden = input.orden
+
+  const [updated] = await db
+    .update(artistWebMediaDetails)
+    .set(patch)
+    .where(eq(artistWebMediaDetails.id, input.id))
+    .returning()
+  if (!updated) throw new NotFoundError("Detalle multimedia no encontrado.")
+  return updated
+}
+
+export async function deleteArtistWebMediaDetail(actor: Actor, id: string) {
+  assertCan(actor, PERMISSIONS.campaigns.manage)
+  await db.delete(artistWebMediaDetails).where(eq(artistWebMediaDetails.id, id))
+  return { ok: true }
 }
 
 export async function createFlamencoRepresentative(actor: Actor, rawInput: unknown) {
@@ -2707,6 +2791,13 @@ export async function updateFlamencoArtist(actor: Actor, rawInput: unknown) {
       email: input.email || null,
       websiteUrl: input.websiteUrl || null,
       instagramHandle: input.instagramHandle || null,
+      instagramUrl: input.instagramUrl || null,
+      facebookUrl: input.facebookUrl || null,
+      telegramUrl: input.telegramUrl || null,
+      tiktokUrl: input.tiktokUrl || null,
+      imagenprincipal: input.imagenprincipal || null,
+      mimeType: input.mimeType || ".jpg",
+      patreal: input.patreal || null,
       youtubeChannelUrl: input.youtubeChannelUrl || null,
       technicalRider: input.technicalRider || null,
       representativeId: input.representativeId || null,

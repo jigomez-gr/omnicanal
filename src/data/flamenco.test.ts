@@ -13,12 +13,14 @@ import {
   confirmEventProvisionalBooking,
   connectZadarmaSipTrunkAction,
   createArtistDigitalService,
+  createArtistWebMediaDetail,
   createEventProvisionalBooking,
   createFlamencoArtist,
   createFlamencoConcert,
   createFlamencoContract,
   createFlamencoMediaAsset,
   createFlamencoVenue,
+  deleteArtistWebMediaDetail,
   evaluateEventMinAttendeesCancellation,
   getCalcomConfig,
   getFlamencoHubSnapshot,
@@ -32,6 +34,7 @@ import {
   syncCallsFromVapi,
   syncFlamencoToolsAction,
   toggleCallReview,
+  updateArtistWebMediaDetail,
   updateCalcomConfig,
   updatePaymentConfig,
   updateVapiAndZadarmaConfig,
@@ -479,5 +482,95 @@ describe("Agencia de Promoción Flamenca, Cal.com, Stripe y VAPI/Zadarma", () =>
 
     const syncRes = await syncCallsFromVapi(owner.actor)
     expect(syncRes.ok).toBe(true)
+  })
+
+  it("[FLA-WEB-01] gestiona relación maestro/detalle de material multimedia web y campos de redes, blob e imagen póster", async () => {
+    // 1. Crear intérprete con redes, imagen principal Base64, mimeType y patreal
+    const artist = await createFlamencoArtist(owner.actor, {
+      artisticName: "Macarena de Jerez",
+      discipline: "baile",
+      leadGuitarist: "Manuel Parrilla",
+      baseCacheEur: 2800,
+      minCacheEur: 2200,
+      websiteUrl: "https://macarenadejerez.com",
+      instagramUrl: "https://instagram.com/macarenajerez",
+      facebookUrl: "https://facebook.com/macarenadejerezflamenco",
+      telegramUrl: "https://t.me/macarenaflamenco",
+      tiktokUrl: "https://tiktok.com/@macarenajerez",
+      mimeType: ".mp4",
+      patreal: "/media/stream/services/macarena-promo-2026.mp4",
+      imagenprincipal: "data:image/jpeg;base64,/9j/4AAQSkZJRg==",
+      biography: "<p>Bailaora jerezana con <strong>premio nacional</strong> de danza.</p>",
+    })
+
+    expect(artist.mimeType).toBe(".mp4")
+    expect(artist.patreal).toBe("/media/stream/services/macarena-promo-2026.mp4")
+    expect(artist.imagenprincipal).toBe("data:image/jpeg;base64,/9j/4AAQSkZJRg==")
+    expect(artist.instagramUrl).toBe("https://instagram.com/macarenajerez")
+    expect(artist.tiktokUrl).toBe("https://tiktok.com/@macarenajerez")
+
+    // 2. Crear detalles de material multimedia web (master/detail)
+    const detailJpg = await createArtistWebMediaDetail(owner.actor, {
+      artistId: artist.id,
+      path: "https://cdn.soniqueteflamenco.com/media/macarena-foto-oficial.jpg",
+      tipoMime: ".jpg",
+      pertenecePack: true,
+      textoMostrar: "Retrato escénico alta definición",
+      tooltip: "Fotografía con iluminación de tablao para cartelería",
+      orden: 1,
+      visibleWeb: true,
+    })
+
+    expect(detailJpg.artistId).toBe(artist.id)
+    expect(detailJpg.tipoMime).toBe(".jpg")
+    expect(detailJpg.pertenecePack).toBe(true)
+    expect(detailJpg.textoMostrar).toBe("Retrato escénico alta definición")
+
+    const detailMp4 = await createArtistWebMediaDetail(owner.actor, {
+      artistId: artist.id,
+      path: "/media/stream/services/macarena-bulerias-directo.mp4",
+      tipoMime: ".mp4",
+      pertenecePack: false,
+      textoMostrar: "Solo de bulerías en directo",
+      tooltip: "Extracto de 45 segundos grabado en acústico",
+      orden: 2,
+      visibleWeb: true,
+    })
+    expect(detailMp4.tipoMime).toBe(".mp4")
+    expect(detailMp4.pertenecePack).toBe(false)
+
+    // 3. Comprobar que getFlamencoHubSnapshot devuelve los detalles
+    let snapshot = await getFlamencoHubSnapshot(viewer.actor)
+    const artistDetails = snapshot.webMediaDetails.filter((d) => d.artistId === artist.id)
+    expect(artistDetails.length).toBe(2)
+    expect(artistDetails[0].textoMostrar).toBe("Retrato escénico alta definición")
+    expect(artistDetails[1].textoMostrar).toBe("Solo de bulerías en directo")
+
+    // 4. Actualizar un detalle
+    const updated = await updateArtistWebMediaDetail(owner.actor, {
+      id: detailJpg.id,
+      textoMostrar: "Retrato escénico oficial 2026",
+      pertenecePack: false,
+    })
+    expect(updated.textoMostrar).toBe("Retrato escénico oficial 2026")
+    expect(updated.pertenecePack).toBe(false)
+
+    // 5. Eliminar un detalle
+    await deleteArtistWebMediaDetail(owner.actor, detailMp4.id)
+
+    snapshot = await getFlamencoHubSnapshot(viewer.actor)
+    const remainingDetails = snapshot.webMediaDetails.filter((d) => d.artistId === artist.id)
+    expect(remainingDetails.length).toBe(1)
+    expect(remainingDetails[0].id).toBe(detailJpg.id)
+
+    // 6. Autorización: viewer no puede crear detalles
+    await expect(
+      createArtistWebMediaDetail(viewer.actor, {
+        artistId: artist.id,
+        path: "https://cdn.soniqueteflamenco.com/media/test.pdf",
+        tipoMime: ".pdf",
+        textoMostrar: "Dossier artístico",
+      }),
+    ).rejects.toThrow(AuthError)
   })
 })

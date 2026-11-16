@@ -9,17 +9,22 @@ import {
   CheckCircle2,
   Edit3,
   ExternalLink,
+  Eye,
   Globe,
   Guitar,
+  Image as ImageIcon,
+  Layers,
   Mail,
   Music,
   PlayCircle,
+  Plus,
   Search,
   Send,
   Settings2,
   ShieldAlert,
   Sparkles,
   Trash2,
+  Upload,
   UserCheck,
   Video,
   X,
@@ -47,11 +52,16 @@ import {
   ARTIST_DISCIPLINE_LABELS,
   CONCERT_STATUS_LABELS,
   EVENT_KIND_LABELS,
+  FLAMENCO_CRM_URL,
+  FLAMENCO_DETAIL_MIME_LABELS,
+  FLAMENCO_DETAIL_MIME_TYPES,
+  FLAMENCO_LANDING_URL,
   FLAMENCO_MEDIA_PIECES,
   MEDIA_SOURCE_PLATFORM_LABELS,
   VENUE_KIND_LABELS,
   type ArtistDiscipline,
   type EventKind,
+  type FlamencoDetailMimeType,
   type MediaSourcePlatform,
   type VenueKind,
 } from "@/lib/flamenco/catalog"
@@ -60,6 +70,7 @@ import {
   confirmProvisionalBookingAction,
   createArtistAction,
   createArtistDigitalServiceAction,
+  createArtistWebMediaDetailAction,
   createConcertAction,
   createMediaAssetAction,
   createProvisionalBookingAction,
@@ -67,6 +78,7 @@ import {
   createVenueAction,
   deleteArtistAction,
   deleteArtistDigitalServiceAction,
+  deleteArtistWebMediaDetailAction,
   deleteCatalogServiceAction,
   deleteConcertAction,
   deleteMediaAssetAction,
@@ -80,6 +92,7 @@ import {
   simulateConcertOfferAction,
   updateArtistAction,
   updateArtistDigitalServiceAction,
+  updateArtistWebMediaDetailAction,
   updateConcertAction,
   updateMediaAssetAction,
   updateRepresentativeAction,
@@ -162,11 +175,33 @@ export function PromocionClient({
   const [artistEmail, setArtistEmail] = useState("")
   const [artistPhone, setArtistPhone] = useState("")
   const [artistWeb, setArtistWeb] = useState("")
+  const [artistInstagramUrl, setArtistInstagramUrl] = useState("")
+  const [artistFacebookUrl, setArtistFacebookUrl] = useState("")
+  const [artistTelegramUrl, setArtistTelegramUrl] = useState("")
+  const [artistTiktokUrl, setArtistTiktokUrl] = useState("")
+  const [artistImagenPrincipal, setArtistImagenPrincipal] = useState("")
+  const [artistMimeType, setArtistMimeType] = useState<string>(".jpg")
+  const [artistPatReal, setArtistPatReal] = useState("")
   const [artistBio, setArtistBio] = useState("")
+  const [showBioPreview, setShowBioPreview] = useState(false)
   const [artistRepId, setArtistRepId] = useState<string>(snapshot.representatives[0]?.id ?? "")
   const [expandedArtistIdForVideos, setExpandedArtistIdForVideos] = useState<string | null>(
     snapshot.artists[0]?.id ?? null,
   )
+  const [expandedArtistIdForDetails, setExpandedArtistIdForDetails] = useState<string | null>(
+    snapshot.artists[0]?.id ?? null,
+  )
+
+  // ─── Master/Detail: Material Multimedia para Web ───
+  const [editingDetailId, setEditingDetailId] = useState<string | null>(null)
+  const [detailArtistId, setDetailArtistId] = useState<string>(snapshot.artists[0]?.id ?? "")
+  const [detailPath, setDetailPath] = useState("")
+  const [detailTipoMime, setDetailTipoMime] = useState<FlamencoDetailMimeType>(".jpg")
+  const [detailPertenecePack, setDetailPertenecePack] = useState(false)
+  const [detailTextoMostrar, setDetailTextoMostrar] = useState("")
+  const [detailTooltip, setDetailTooltip] = useState("")
+  const [detailVisibleWeb, setDetailVisibleWeb] = useState(true)
+  const [detailOrden, setDetailOrden] = useState("0")
 
   // ABM Pieza Multimedia
   const [editingMediaId, setEditingMediaId] = useState<string | null>(null)
@@ -425,6 +460,13 @@ export function PromocionClient({
     setArtistEmail(a.email ?? "")
     setArtistPhone(a.phone ?? "")
     setArtistWeb(a.websiteUrl ?? "")
+    setArtistInstagramUrl(a.instagramUrl ?? a.instagramHandle ?? "")
+    setArtistFacebookUrl(a.facebookUrl ?? "")
+    setArtistTelegramUrl(a.telegramUrl ?? "")
+    setArtistTiktokUrl(a.tiktokUrl ?? "")
+    setArtistImagenPrincipal(a.imagenprincipal ?? "")
+    setArtistMimeType(a.mimeType ?? ".jpg")
+    setArtistPatReal(a.patreal ?? "")
     setArtistBio(a.biography ?? "")
     setArtistRepId(a.representativeId ?? "")
     setFeedback(`Editando intérprete «${a.artisticName}». Modifica los campos y pulsa Guardar.`)
@@ -438,6 +480,38 @@ export function PromocionClient({
     setArtistEmail("")
     setArtistPhone("")
     setArtistWeb("")
+    setArtistInstagramUrl("")
+    setArtistFacebookUrl("")
+    setArtistTelegramUrl("")
+    setArtistTiktokUrl("")
+    setArtistImagenPrincipal("")
+    setArtistMimeType(".jpg")
+    setArtistPatReal("")
+  }
+
+  function loadDetailForEdit(d: NonNullable<Snapshot["webMediaDetails"]>[number]) {
+    setEditingDetailId(d.id)
+    setDetailArtistId(d.artistId)
+    setDetailPath(d.path)
+    setDetailTipoMime((d.tipoMime as FlamencoDetailMimeType) || ".jpg")
+    setDetailPertenecePack(d.pertenecePack)
+    setDetailTextoMostrar(d.textoMostrar)
+    setDetailTooltip(d.tooltip)
+    setDetailVisibleWeb(d.visibleWeb)
+    setDetailOrden(String(d.orden ?? 0))
+    setFeedback(`Editando detalle multimedia «${d.textoMostrar || d.path}».`)
+  }
+
+  function resetDetailForm(artistId?: string) {
+    setEditingDetailId(null)
+    setDetailArtistId(artistId ?? snapshot.artists[0]?.id ?? "")
+    setDetailPath("")
+    setDetailTipoMime(".jpg")
+    setDetailPertenecePack(false)
+    setDetailTextoMostrar("")
+    setDetailTooltip("")
+    setDetailVisibleWeb(true)
+    setDetailOrden("0")
   }
 
   function loadMediaForEdit(m: Snapshot["mediaAssets"][number]) {
@@ -619,6 +693,18 @@ export function PromocionClient({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <a href={FLAMENCO_LANDING_URL} target="_blank" rel="noreferrer">
+              <Button variant="outline" size="sm" className="gap-1.5 bg-white">
+                <Globe className="size-4 text-amber-700" />
+                Landing (soniqueteflamenco.com)
+              </Button>
+            </a>
+            <a href={FLAMENCO_CRM_URL} target="_blank" rel="noreferrer">
+              <Button variant="outline" size="sm" className="gap-1.5 bg-white">
+                <Sparkles className="size-4 text-amber-900" />
+                CRM (crm.soniqueteconarte.com)
+              </Button>
+            </a>
             <Link href="/agenda">
               <Button variant="outline" size="sm" className="gap-1.5 bg-white">
                 <CalendarCheck2 className="size-4 text-amber-700" />
@@ -627,7 +713,7 @@ export function PromocionClient({
             </Link>
             <a href="/api/widget/services" target="_blank" rel="noreferrer">
               <Button variant="outline" size="sm" className="gap-1.5 bg-white">
-                <Globe className="size-4 text-emerald-700" />
+                <ExternalLink className="size-4 text-emerald-700" />
                 API Landing (/api/widget/services)
               </Button>
             </a>
@@ -1073,7 +1159,9 @@ export function PromocionClient({
                   {filteredArtists.map((artist) => {
                     const rep = snapshot.representatives.find((r) => r.id === artist.representativeId)
                     const mediaList = snapshot.mediaAssets.filter((m) => m.artistId === artist.id)
+                    const webDetails = (snapshot.webMediaDetails ?? []).filter((d) => d.artistId === artist.id)
                     const isExpanded = expandedArtistIdForVideos === artist.id
+                    const isDetailsExpanded = expandedArtistIdForDetails === artist.id
 
                     return (
                       <div
@@ -1083,27 +1171,108 @@ export function PromocionClient({
                         }`}
                       >
                         <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="text-lg font-bold text-stone-900">
-                                {artist.artisticName}
-                              </h3>
-                              <Badge className="bg-amber-100 text-amber-900">
-                                {ARTIST_DISCIPLINE_LABELS[artist.discipline as ArtistDiscipline] ??
-                                  artist.discipline}
-                              </Badge>
-                              <Badge variant="outline">
-                                Caché: {artist.baseCacheEur} € (mín. {artist.minCacheEur} €)
-                              </Badge>
+                          <div className="flex items-start gap-3.5">
+                            {artist.imagenprincipal ? (
+                              <div className="relative size-16 shrink-0 overflow-hidden rounded-lg border bg-stone-100 shadow-xs">
+                                <img
+                                  src={artist.imagenprincipal}
+                                  alt={artist.artisticName}
+                                  className="size-full object-cover"
+                                />
+                                {artist.mimeType === ".mp4" && (
+                                  <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                                    <PlayCircle className="size-6 text-white drop-shadow-md" />
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="flex size-16 shrink-0 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-800">
+                                <Guitar className="size-7 opacity-60" />
+                              </div>
+                            )}
+
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h3 className="text-lg font-bold text-stone-900">
+                                  {artist.artisticName}
+                                </h3>
+                                <Badge className="bg-amber-100 text-amber-900">
+                                  {ARTIST_DISCIPLINE_LABELS[artist.discipline as ArtistDiscipline] ??
+                                    artist.discipline}
+                                </Badge>
+                                <Badge variant="outline">
+                                  Caché: {artist.baseCacheEur} € (mín. {artist.minCacheEur} €)
+                                </Badge>
+                                {artist.mimeType && (
+                                  <Badge variant="secondary" className="text-[10px] font-mono">
+                                    {artist.mimeType}
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="mt-1 text-xs text-stone-500">
+                                {artist.city} · {artist.email || "Sin email"} ·{" "}
+                                {artist.phone || "Sin teléfono"}
+                                {rep ? ` · Rep.: ${rep.fullName}` : ""}
+                                {artist.patreal ? ` · Path real: ${artist.patreal}` : ""}
+                              </p>
+
+                              {/* Redes sociales y presencia web */}
+                              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-stone-600">
+                                {artist.websiteUrl && (
+                                  <a
+                                    href={artist.websiteUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1 rounded bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-700 hover:bg-stone-200 hover:text-amber-800"
+                                  >
+                                    <Globe className="size-3" /> Web
+                                  </a>
+                                )}
+                                {(artist.instagramUrl || artist.instagramHandle) && (
+                                  <a
+                                    href={artist.instagramUrl || `https://instagram.com/${artist.instagramHandle?.replace("@", "")}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1 rounded bg-pink-50 px-2 py-0.5 text-[11px] font-medium text-pink-700 hover:bg-pink-100"
+                                  >
+                                    <ExternalLink className="size-3" /> Instagram
+                                  </a>
+                                )}
+                                {artist.facebookUrl && (
+                                  <a
+                                    href={artist.facebookUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700 hover:bg-blue-100"
+                                  >
+                                    <ExternalLink className="size-3" /> Facebook
+                                  </a>
+                                )}
+                                {artist.telegramUrl && (
+                                  <a
+                                    href={artist.telegramUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1 rounded bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700 hover:bg-sky-100"
+                                  >
+                                    <Send className="size-3" /> Telegram
+                                  </a>
+                                )}
+                                {artist.tiktokUrl && (
+                                  <a
+                                    href={artist.tiktokUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1 rounded bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-stone-800 hover:bg-neutral-200"
+                                  >
+                                    <ExternalLink className="size-3" /> TikTok
+                                  </a>
+                                )}
+                              </div>
                             </div>
-                            <p className="mt-1 text-xs text-stone-500">
-                              {artist.city} · {artist.email || "Sin email"} ·{" "}
-                              {artist.phone || "Sin teléfono"}
-                              {rep ? ` · Rep.: ${rep.fullName}` : ""}
-                            </p>
                           </div>
 
-                          {/* Botones de Acción ABM: Editar, Vídeos, Borrar */}
+                          {/* Botones de Acción ABM: Editar, Vídeos, Detalle Web, Borrar */}
                           <div className="flex flex-wrap items-center gap-1.5">
                             <Button
                               size="sm"
@@ -1116,6 +1285,17 @@ export function PromocionClient({
                             </Button>
                             <Button
                               size="sm"
+                              variant={isDetailsExpanded ? "default" : "outline"}
+                              className="h-8 gap-1 text-xs"
+                              onClick={() =>
+                                setExpandedArtistIdForDetails(isDetailsExpanded ? null : artist.id)
+                              }
+                            >
+                              <Layers className="size-3.5" />
+                              Material Web ({webDetails.length})
+                            </Button>
+                            <Button
+                              size="sm"
                               variant={isExpanded ? "default" : "outline"}
                               className="h-8 gap-1 text-xs"
                               onClick={() =>
@@ -1123,7 +1303,7 @@ export function PromocionClient({
                               }
                             >
                               <Video className="size-3.5" />
-                              Pack Vídeos ({mediaList.length})
+                              Pack 12 Vídeos ({mediaList.length})
                             </Button>
                             <Button
                               size="sm"
@@ -1179,6 +1359,132 @@ export function PromocionClient({
                           {artist.leadGuitarist || "A definir"} ·{" "}
                           <span className="font-semibold">Formación:</span> {artist.groupFormation}
                         </div>
+
+                        {/* Desplegable Master / Detail: Material Multimedia para Web */}
+                        {isDetailsExpanded && (
+                          <div className="mt-4 space-y-3 rounded-xl border border-sky-200 bg-sky-50/40 p-4">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <p className="text-xs font-bold text-sky-950">
+                                  Material Multimedia Web (Master / Detail) · {artist.artisticName}
+                                </p>
+                                <p className="text-[11px] text-sky-800">
+                                  Material publicado en la web (https://soniqueteflamenco.com) para valoración del cliente
+                                </p>
+                              </div>
+                              <Button
+                                size="sm"
+                                className="h-7 text-xs bg-sky-800 hover:bg-sky-900 text-white"
+                                onClick={() => {
+                                  resetDetailForm(artist.id)
+                                  setFeedback(`Añadiendo nuevo detalle multimedia para «${artist.artisticName}». Rellena el formulario de la derecha.`)
+                                }}
+                              >
+                                <Plus className="size-3 mr-1" />
+                                Añadir Detalle Multimedia
+                              </Button>
+                            </div>
+
+                            {webDetails.length === 0 ? (
+                              <div className="rounded-lg border border-dashed border-sky-200 bg-white p-4 text-center text-xs text-stone-500">
+                                Este intérprete aún no tiene piezas en la relación de detalle multimedia para la web. Pulsa en «Añadir Detalle Multimedia» para registrar una.
+                              </div>
+                            ) : (
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                {webDetails.map((detail) => (
+                                  <div
+                                    key={detail.id}
+                                    className={`flex flex-col justify-between rounded-lg border bg-white p-3 text-xs shadow-2xs ${
+                                      editingDetailId === detail.id ? "ring-2 ring-sky-600" : ""
+                                    }`}
+                                  >
+                                    <div>
+                                      <div className="flex items-center justify-between gap-1">
+                                        <div className="flex flex-wrap items-center gap-1">
+                                          <Badge variant="outline" className="text-[10px] font-mono font-bold uppercase">
+                                            {detail.tipoMime}
+                                          </Badge>
+                                          {detail.pertenecePack && (
+                                            <Badge className="bg-amber-100 text-amber-900 text-[10px]">
+                                              En Pack
+                                            </Badge>
+                                          )}
+                                          {detail.visibleWeb ? (
+                                            <Badge className="bg-emerald-100 text-emerald-900 text-[10px]">
+                                              Visible Web
+                                            </Badge>
+                                          ) : (
+                                            <Badge variant="secondary" className="text-[10px]">
+                                              Oculto
+                                            </Badge>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                          <button
+                                            type="button"
+                                            onClick={() => loadDetailForEdit(detail)}
+                                            className="rounded px-1.5 py-0.5 text-[11px] font-medium text-sky-800 hover:bg-sky-50"
+                                          >
+                                            Editar
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setDeletionConfirm({
+                                                title: "¿Eliminar detalle multimedia?",
+                                                entityName: detail.textoMostrar || detail.path,
+                                                description: `Se eliminará este recurso de la ficha de ${artist.artisticName}:`,
+                                                warnings: [
+                                                  `Tipo: ${detail.tipoMime}`,
+                                                  `Path: ${detail.path}`,
+                                                  `Tooltip: ${detail.tooltip || "Sin tooltip"}`,
+                                                ],
+                                                onConfirm: async () => {
+                                                  await deleteArtistWebMediaDetailAction(detail.id)
+                                                  setFeedback("Detalle multimedia eliminado.")
+                                                  router.refresh()
+                                                },
+                                              })
+                                            }}
+                                            className="rounded px-1.5 py-0.5 text-[11px] font-medium text-rose-700 hover:bg-rose-50"
+                                          >
+                                            Borrar
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      <p className="mt-2 font-semibold text-stone-900">
+                                        {detail.textoMostrar || "Pieza sin texto"}
+                                      </p>
+                                      {detail.tooltip && (
+                                        <p className="mt-0.5 text-[11px] italic text-stone-500">
+                                          Tooltip: {detail.tooltip}
+                                        </p>
+                                      )}
+                                      <p className="mt-1 font-mono text-[11px] text-stone-600 truncate" title={detail.path}>
+                                        Path: {detail.path}
+                                      </p>
+                                    </div>
+
+                                    <div className="mt-2.5 pt-2 border-t flex items-center justify-between text-[11px] text-stone-400">
+                                      <span>Orden: {detail.orden}</span>
+                                      {detail.path.startsWith("http") && (
+                                        <a
+                                          href={detail.path}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="inline-flex items-center gap-1 text-sky-700 hover:underline"
+                                        >
+                                          Abrir <ExternalLink className="size-3" />
+                                        </a>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         {/* Desplegable de Vídeos del Intérprete con ABM de cada pieza */}
                         {isExpanded && (
@@ -1388,13 +1694,210 @@ export function PromocionClient({
                           onChange={(e) => setArtistPhone(e.target.value)}
                         />
                       </div>
-                      <div className="sm:col-span-2">
-                        <Label>Biografía artística</Label>
-                        <Textarea
-                          rows={2}
-                          value={artistBio}
-                          onChange={(e) => setArtistBio(e.target.value)}
-                        />
+
+                      {/* ─── Bloque Multimedia Principal y Póster ─── */}
+                      <div className="sm:col-span-2 mt-2 rounded-xl border border-amber-200 bg-amber-50/50 p-3.5 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="font-bold text-amber-950 flex items-center gap-1.5">
+                            <ImageIcon className="size-4 text-amber-800" />
+                            Multimedia Principal & Póster (patreal / imagenprincipal)
+                          </Label>
+                          {artistImagenPrincipal && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setArtistImagenPrincipal("")
+                                setArtistPatReal("")
+                              }}
+                              className="text-xs text-rose-700 hover:underline"
+                            >
+                              Quitar archivo
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="grid gap-2.5 sm:grid-cols-2">
+                          <div>
+                            <Label className="text-xs">Tipo MIME principal</Label>
+                            <select
+                              className="w-full rounded-md border bg-white px-3 py-1.5 text-xs"
+                              value={artistMimeType}
+                              onChange={(e) => setArtistMimeType(e.target.value)}
+                            >
+                              <option value=".jpg">.jpg (Imagen / Foto)</option>
+                              <option value=".mp4">.mp4 (Vídeo)</option>
+                              <option value=".mp3">.mp3 (Audio)</option>
+                              <option value=".docx">.docx (Documento Word)</option>
+                              <option value=".pdf">.pdf (Documento PDF)</option>
+                            </select>
+                          </div>
+                          <div>
+                            <Label className="text-xs">Ruta real física (patreal)</Label>
+                            <Input
+                              value={artistPatReal}
+                              onChange={(e) => setArtistPatReal(e.target.value)}
+                              placeholder="/var/data/... o https://..."
+                              className="h-8 text-xs bg-white"
+                            />
+                          </div>
+
+                          <div className="sm:col-span-2">
+                            <Label className="text-xs">
+                              Cargar Imagen o Póster (Base64 directo - Opción A)
+                            </Label>
+                            <div className="mt-1 flex items-center gap-2">
+                              <label className="flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-amber-300 bg-white px-3 text-xs font-medium text-amber-900 shadow-2xs hover:bg-amber-100">
+                                <Upload className="size-3.5" />
+                                <span>Seleccionar archivo local</span>
+                                <input
+                                  type="file"
+                                  accept="image/*,video/mp4,audio/mp3,application/pdf"
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0]
+                                    if (file) {
+                                      const reader = new FileReader()
+                                      reader.onload = () => {
+                                        const res = reader.result as string
+                                        setArtistImagenPrincipal(res)
+                                        if (file.type.includes("mp4")) setArtistMimeType(".mp4")
+                                        else if (file.type.includes("mp3")) setArtistMimeType(".mp3")
+                                        else if (file.type.includes("pdf")) setArtistMimeType(".pdf")
+                                        else if (file.name.endsWith(".docx")) setArtistMimeType(".docx")
+                                        else setArtistMimeType(".jpg")
+                                      }
+                                      reader.readAsDataURL(file)
+                                    }
+                                  }}
+                                />
+                              </label>
+                              <span className="text-[11px] text-stone-500">
+                                {artistImagenPrincipal
+                                  ? "Archivo cargado en memoria"
+                                  : "O pega directamente la URL/Base64 abajo"}
+                              </span>
+                            </div>
+                            <Input
+                              value={artistImagenPrincipal.slice(0, 100) + (artistImagenPrincipal.length > 100 ? "..." : "")}
+                              onChange={(e) => setArtistImagenPrincipal(e.target.value)}
+                              placeholder="data:image/jpeg;base64,... o https://..."
+                              className="mt-1.5 h-7 text-[11px] bg-white font-mono"
+                            />
+                          </div>
+
+                          {/* Previsualización del Póster con Icono de Vídeo si es MP4 */}
+                          {artistImagenPrincipal && (
+                            <div className="sm:col-span-2 flex items-center gap-3 rounded-lg border bg-white p-2">
+                              <div className="relative size-16 shrink-0 overflow-hidden rounded-md border bg-stone-100">
+                                <img
+                                  src={artistImagenPrincipal}
+                                  alt="Póster"
+                                  className="size-full object-cover"
+                                />
+                                {artistMimeType === ".mp4" && (
+                                  <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                                    <PlayCircle className="size-6 text-white drop-shadow-md" />
+                                  </div>
+                                )}
+                              </div>
+                              <div className="text-xs">
+                                <p className="font-semibold text-stone-900">
+                                  {artistMimeType === ".mp4" ? "Póster de Vídeo (.mp4) con icono de reproducción" : "Imagen / Archivo Principal"}
+                                </p>
+                                <p className="text-[11px] text-stone-500 font-mono">
+                                  Mime: {artistMimeType} {artistPatReal ? `· ${artistPatReal}` : ""}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* ─── Bloque Redes Sociales y Presencia Online ─── */}
+                      <div className="sm:col-span-2 mt-2 rounded-xl border border-stone-200 bg-stone-50/50 p-3.5 space-y-2.5">
+                        <Label className="font-bold text-stone-900 flex items-center gap-1.5">
+                          <Globe className="size-4 text-stone-700" />
+                          Presencia Online y Redes Sociales
+                        </Label>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <div className="sm:col-span-2">
+                            <Label className="text-xs">Página Web Oficial</Label>
+                            <Input
+                              value={artistWeb}
+                              onChange={(e) => setArtistWeb(e.target.value)}
+                              placeholder="https://..."
+                              className="h-8 text-xs bg-white"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Instagram (URL o usuario)</Label>
+                            <Input
+                              value={artistInstagramUrl}
+                              onChange={(e) => setArtistInstagramUrl(e.target.value)}
+                              placeholder="https://instagram.com/... o @usuario"
+                              className="h-8 text-xs bg-white"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Facebook (URL)</Label>
+                            <Input
+                              value={artistFacebookUrl}
+                              onChange={(e) => setArtistFacebookUrl(e.target.value)}
+                              placeholder="https://facebook.com/..."
+                              className="h-8 text-xs bg-white"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Telegram (URL o canal)</Label>
+                            <Input
+                              value={artistTelegramUrl}
+                              onChange={(e) => setArtistTelegramUrl(e.target.value)}
+                              placeholder="https://t.me/... o @canal"
+                              className="h-8 text-xs bg-white"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs">TikTok (URL o cuenta)</Label>
+                            <Input
+                              value={artistTiktokUrl}
+                              onChange={(e) => setArtistTiktokUrl(e.target.value)}
+                              placeholder="https://tiktok.com/@..."
+                              className="h-8 text-xs bg-white"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* ─── Bloque Biografía Artística (HTML) ─── */}
+                      <div className="sm:col-span-2 mt-2">
+                        <div className="flex items-center justify-between mb-1">
+                          <Label className="font-bold">Biografía artística (Admite formato HTML)</Label>
+                          <button
+                            type="button"
+                            onClick={() => setShowBioPreview(!showBioPreview)}
+                            className="text-xs font-semibold text-amber-800 hover:underline inline-flex items-center gap-1"
+                          >
+                            <Eye className="size-3" />
+                            {showBioPreview ? "Ocultar vista previa" : "Ver vista previa HTML"}
+                          </button>
+                        </div>
+                        {showBioPreview ? (
+                          <div
+                            className="rounded-lg border bg-white p-3 text-xs text-stone-800 prose prose-sm max-w-none min-h-[90px]"
+                            dangerouslySetInnerHTML={{ __html: artistBio || "<i>Sin biografía escrita aún.</i>" }}
+                          />
+                        ) : (
+                          <Textarea
+                            rows={3}
+                            value={artistBio}
+                            onChange={(e) => setArtistBio(e.target.value)}
+                            placeholder="<p>Trayectoria y palos de la artista...</p> o texto plano con párrafos."
+                            className="font-mono text-xs bg-white"
+                          />
+                        )}
+                        <p className="mt-1 text-[11px] text-stone-500">
+                          Puedes usar etiquetas HTML estándar como &lt;p&gt;, &lt;b&gt;, &lt;ul&gt;, &lt;li&gt; o &lt;a href=&quot;...&quot;&gt;.
+                        </p>
                       </div>
                     </div>
 
@@ -1428,6 +1931,13 @@ export function PromocionClient({
                             email: artistEmail || null,
                             phone: artistPhone || null,
                             websiteUrl: artistWeb || null,
+                            instagramUrl: artistInstagramUrl || null,
+                            facebookUrl: artistFacebookUrl || null,
+                            telegramUrl: artistTelegramUrl || null,
+                            tiktokUrl: artistTiktokUrl || null,
+                            imagenprincipal: artistImagenPrincipal || null,
+                            mimeType: artistMimeType || ".jpg",
+                            patreal: artistPatReal || null,
                             representativeId: artistRepId || null,
                             generateStandardMediaPack: !editingArtistId,
                           }
@@ -1568,6 +2078,154 @@ export function PromocionClient({
                     >
                       {editingMediaId ? "Guardar Cambios de Pieza" : "Añadir Pieza Multimedia"}
                     </Button>
+                  </div>
+
+                  {/* Formulario Master / Detail: Material Multimedia para Web */}
+                  <div className="rounded-xl border border-sky-200 bg-white p-5 shadow-xs space-y-3.5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-base font-bold text-sky-950 flex items-center gap-1.5">
+                          <Layers className="size-4 text-sky-700" />
+                          {editingDetailId
+                            ? "Modificar Detalle Multimedia Web"
+                            : "Añadir Material Web Detalle (Master / Detail)"}
+                        </h3>
+                        <p className="text-[11px] text-stone-500">
+                          Recursos para la web (https://soniqueteflamenco.com) para que los clientes valoren contratar al intérprete
+                        </p>
+                      </div>
+                      {editingDetailId && (
+                        <Button size="sm" variant="ghost" onClick={() => resetDetailForm(detailArtistId)}>
+                          <X className="mr-1 size-3.5" /> Cancelar
+                        </Button>
+                      )}
+                    </div>
+
+                    <div className="grid gap-2.5">
+                      <div>
+                        <Label className="text-xs">Intérprete asignado (Master)</Label>
+                        <select
+                          className="w-full rounded-md border px-3 py-1.5 text-xs bg-white"
+                          value={detailArtistId}
+                          onChange={(e) => setDetailArtistId(e.target.value)}
+                        >
+                          {snapshot.artists.map((a) => (
+                            <option key={a.id} value={a.id}>
+                              {a.artisticName} ({a.city})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <div>
+                          <Label className="text-xs">Tipo MIME (sólo permitidos)</Label>
+                          <select
+                            className="w-full rounded-md border px-3 py-1.5 text-xs bg-white font-mono"
+                            value={detailTipoMime}
+                            onChange={(e) => setDetailTipoMime(e.target.value as FlamencoDetailMimeType)}
+                          >
+                            {FLAMENCO_DETAIL_MIME_TYPES.map((mime) => (
+                              <option key={mime} value={mime}>
+                                {FLAMENCO_DETAIL_MIME_LABELS[mime]}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <Label className="text-xs">Orden de presentación</Label>
+                          <Input
+                            type="number"
+                            value={detailOrden}
+                            onChange={(e) => setDetailOrden(e.target.value)}
+                            placeholder="0"
+                            className="h-8 text-xs bg-white"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label className="text-xs">Ruta o URL del archivo (path) *</Label>
+                        <Input
+                          value={detailPath}
+                          onChange={(e) => setDetailPath(e.target.value)}
+                          placeholder="https://cdn.soniqueteflamenco.com/media/... o /var/data/..."
+                          className="h-8 text-xs bg-white font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <Label className="text-xs">Texto a mostrar *</Label>
+                        <Input
+                          value={detailTextoMostrar}
+                          onChange={(e) => setDetailTextoMostrar(e.target.value)}
+                          placeholder="Ej. Vídeo Completo de Presentación, Muestra de Audio por Alegrías"
+                          className="h-8 text-xs bg-white"
+                        />
+                      </div>
+
+                      <div>
+                        <Label className="text-xs">Tooltip descriptivo (al pasar el ratón)</Label>
+                        <Input
+                          value={detailTooltip}
+                          onChange={(e) => setDetailTooltip(e.target.value)}
+                          placeholder="Ej. Grabación en directo en el Teatro Real de Madrid con sonido máster"
+                          className="h-8 text-xs bg-white"
+                        />
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-4 pt-1">
+                        <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={detailPertenecePack}
+                            onChange={(e) => setDetailPertenecePack(e.target.checked)}
+                            className="rounded border-stone-300 text-sky-800"
+                          />
+                          <span className="font-medium text-stone-700">Pertenece al Pack promocional</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={detailVisibleWeb}
+                            onChange={(e) => setDetailVisibleWeb(e.target.checked)}
+                            className="rounded border-stone-300 text-emerald-800"
+                          />
+                          <span className="font-medium text-stone-700">Visible en la Web para clientes</span>
+                        </label>
+                      </div>
+
+                      <Button
+                        disabled={!canManage || isPending || !detailPath.trim() || !detailArtistId}
+                        className="w-full bg-sky-800 hover:bg-sky-900 text-white mt-1"
+                        onClick={() => {
+                          startTransition(async () => {
+                            const payload = {
+                              id: editingDetailId ?? undefined,
+                              artistId: detailArtistId,
+                              path: detailPath.trim(),
+                              tipoMime: detailTipoMime,
+                              pertenecePack: detailPertenecePack,
+                              textoMostrar: detailTextoMostrar.trim() || detailPath.trim(),
+                              tooltip: detailTooltip.trim(),
+                              visibleWeb: detailVisibleWeb,
+                              orden: Number(detailOrden) || 0,
+                            }
+                            if (editingDetailId) {
+                              await updateArtistWebMediaDetailAction(payload)
+                              setFeedback(`Detalle multimedia «${payload.textoMostrar}» actualizado.`)
+                            } else {
+                              await createArtistWebMediaDetailAction(payload)
+                              setFeedback(`Detalle multimedia «${payload.textoMostrar}» creado con éxito.`)
+                            }
+                            resetDetailForm(detailArtistId)
+                            router.refresh()
+                          })
+                        }}
+                      >
+                        {editingDetailId ? "Guardar Cambios de Detalle" : "Añadir Detalle Multimedia a la Web"}
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>
