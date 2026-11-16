@@ -531,20 +531,22 @@ describe("Agencia de Promoción Flamenca, Cal.com, Stripe y VAPI/Zadarma", () =>
       path: "/media/stream/services/macarena-bulerias-directo.mp4",
       tipoMime: ".mp4",
       pertenecePack: false,
-      textoMostrar: "Solo de bulerías en directo",
-      tooltip: "Extracto de 45 segundos grabado en acústico",
+      textoMostrar: "<p>Solo de bulerías en directo.<br>Grabado en <strong>Teatro Real</strong>.</p>",
+      tooltip: "<ul>\n<li>Sonido máster 24bit</li>\n<li>Cámara fija 4K</li>\n</ul>",
       orden: 2,
       visibleWeb: true,
     })
     expect(detailMp4.tipoMime).toBe(".mp4")
     expect(detailMp4.pertenecePack).toBe(false)
+    expect(detailMp4.textoMostrar).toContain("<p>Solo de bulerías en directo.")
+    expect(detailMp4.tooltip).toContain("<li>Sonido máster 24bit</li>")
 
     // 3. Comprobar que getFlamencoHubSnapshot devuelve los detalles
     let snapshot = await getFlamencoHubSnapshot(viewer.actor)
     const artistDetails = snapshot.webMediaDetails.filter((d) => d.artistId === artist.id)
     expect(artistDetails.length).toBe(2)
     expect(artistDetails[0].textoMostrar).toBe("Retrato escénico alta definición")
-    expect(artistDetails[1].textoMostrar).toBe("Solo de bulerías en directo")
+    expect(artistDetails[1].textoMostrar).toContain("<p>Solo de bulerías en directo.")
 
     expect(snapshot.urls.landingUrl).toBeTruthy()
     expect(snapshot.urls.crmUrl).toBeTruthy()

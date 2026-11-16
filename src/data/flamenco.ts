@@ -86,7 +86,7 @@ const createArtistSchema = z.object({
   discipline: z
     .enum(["cante", "baile", "toque", "percusion", "cuadro", "instrumentista"])
     .default("cante"),
-  biography: z.string().trim().max(5000).default(""),
+  biography: z.string().trim().max(10_000).default(""),
   styles: z.array(z.string().trim().min(1).max(80)).max(30).default(["Soleá", "Bulerías", "Alegrías"]),
   bringsGroup: z.boolean().default(true),
   groupFormation: z.string().trim().max(500).default("Cante, toque, compás y baile"),
@@ -254,8 +254,8 @@ const createArtistWebMediaDetailSchema = z.object({
   path: z.string().trim().min(1, "La ruta o enlace es obligatorio.").max(2000),
   tipoMime: z.enum([".jpg", ".pdf", ".docx", ".mp3", ".mp4"]).default(".jpg"),
   pertenecePack: z.boolean().default(false),
-  textoMostrar: z.string().trim().max(300).default(""),
-  tooltip: z.string().trim().max(500).default(""),
+  textoMostrar: z.string().trim().max(10_000).default(""),
+  tooltip: z.string().trim().max(10_000).default(""),
   visibleWeb: z.boolean().default(true),
   orden: z.number().int().default(0),
 })

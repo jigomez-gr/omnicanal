@@ -199,7 +199,9 @@ export function PromocionClient({
   const [detailTipoMime, setDetailTipoMime] = useState<FlamencoDetailMimeType>(".jpg")
   const [detailPertenecePack, setDetailPertenecePack] = useState(false)
   const [detailTextoMostrar, setDetailTextoMostrar] = useState("")
+  const [showDetailTextoPreview, setShowDetailTextoPreview] = useState(false)
   const [detailTooltip, setDetailTooltip] = useState("")
+  const [showDetailTooltipPreview, setShowDetailTooltipPreview] = useState(false)
   const [detailVisibleWeb, setDetailVisibleWeb] = useState(true)
   const [detailOrden, setDetailOrden] = useState("0")
 
@@ -509,7 +511,9 @@ export function PromocionClient({
     setDetailTipoMime(".jpg")
     setDetailPertenecePack(false)
     setDetailTextoMostrar("")
+    setShowDetailTextoPreview(false)
     setDetailTooltip("")
+    setShowDetailTooltipPreview(false)
     setDetailVisibleWeb(true)
     setDetailOrden("0")
   }
@@ -1368,7 +1372,12 @@ export function PromocionClient({
                           </div>
                         </div>
 
-                        <p className="mt-2.5 text-sm text-stone-700">{artist.biography}</p>
+                        <div
+                          className="mt-2.5 text-sm text-stone-700 prose prose-sm max-w-none break-words whitespace-pre-wrap"
+                          dangerouslySetInnerHTML={{
+                            __html: artist.biography || "<i>Sin biografía artística detallada.</i>",
+                          }}
+                        />
 
                         <div className="mt-3 rounded-lg bg-stone-50 p-2.5 text-xs text-stone-700">
                           <span className="font-semibold">
@@ -1472,13 +1481,24 @@ export function PromocionClient({
                                         </div>
                                       </div>
 
-                                      <p className="mt-2 font-semibold text-stone-900">
-                                        {detail.textoMostrar || "Pieza sin texto"}
-                                      </p>
+                                      <div
+                                        className="mt-2 text-xs font-semibold text-stone-900 prose prose-xs max-w-none break-words whitespace-pre-wrap"
+                                        dangerouslySetInnerHTML={{
+                                          __html: detail.textoMostrar || "<i>Pieza sin texto</i>",
+                                        }}
+                                      />
                                       {detail.tooltip && (
-                                        <p className="mt-0.5 text-[11px] italic text-stone-500">
-                                          Tooltip: {detail.tooltip}
-                                        </p>
+                                        <div className="mt-1.5 rounded-md border border-stone-200 bg-stone-50 p-2">
+                                          <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-stone-500">
+                                            Tooltip descriptivo:
+                                          </span>
+                                          <div
+                                            className="text-[11px] text-stone-600 prose prose-xs max-w-none break-words whitespace-pre-wrap"
+                                            dangerouslySetInnerHTML={{
+                                              __html: detail.tooltip,
+                                            }}
+                                          />
+                                        </div>
                                       )}
                                       <p className="mt-1 font-mono text-[11px] text-stone-600 truncate" title={detail.path}>
                                         Path: {detail.path}
@@ -2174,23 +2194,63 @@ export function PromocionClient({
                       </div>
 
                       <div>
-                        <Label className="text-xs">Texto a mostrar *</Label>
-                        <Input
-                          value={detailTextoMostrar}
-                          onChange={(e) => setDetailTextoMostrar(e.target.value)}
-                          placeholder="Ej. Vídeo Completo de Presentación, Muestra de Audio por Alegrías"
-                          className="h-8 text-xs bg-white"
-                        />
+                        <div className="flex items-center justify-between mb-1">
+                          <Label className="text-xs font-semibold">Texto a mostrar (Admite HTML y multilínea) *</Label>
+                          <button
+                            type="button"
+                            onClick={() => setShowDetailTextoPreview(!showDetailTextoPreview)}
+                            className="text-[11px] font-medium text-sky-800 hover:underline inline-flex items-center gap-1"
+                          >
+                            <Eye className="size-3" />
+                            {showDetailTextoPreview ? "Modo edición" : "Vista previa HTML"}
+                          </button>
+                        </div>
+                        {showDetailTextoPreview ? (
+                          <div
+                            className="rounded-lg border bg-white p-2.5 text-xs text-stone-800 prose prose-xs max-w-none min-h-[60px] whitespace-pre-wrap break-words"
+                            dangerouslySetInnerHTML={{
+                              __html: detailTextoMostrar || "<i>Sin texto a mostrar aún.</i>",
+                            }}
+                          />
+                        ) : (
+                          <Textarea
+                            value={detailTextoMostrar}
+                            onChange={(e) => setDetailTextoMostrar(e.target.value)}
+                            placeholder="Ej. Vídeo Completo de Presentación... Admite <p>, <strong>, listas, saltos de línea..."
+                            rows={3}
+                            className="text-xs bg-white font-mono"
+                          />
+                        )}
                       </div>
 
                       <div>
-                        <Label className="text-xs">Tooltip descriptivo (al pasar el ratón)</Label>
-                        <Input
-                          value={detailTooltip}
-                          onChange={(e) => setDetailTooltip(e.target.value)}
-                          placeholder="Ej. Grabación en directo en el Teatro Real de Madrid con sonido máster"
-                          className="h-8 text-xs bg-white"
-                        />
+                        <div className="flex items-center justify-between mb-1">
+                          <Label className="text-xs font-semibold">Tooltip descriptivo (Admite HTML y multilínea)</Label>
+                          <button
+                            type="button"
+                            onClick={() => setShowDetailTooltipPreview(!showDetailTooltipPreview)}
+                            className="text-[11px] font-medium text-sky-800 hover:underline inline-flex items-center gap-1"
+                          >
+                            <Eye className="size-3" />
+                            {showDetailTooltipPreview ? "Modo edición" : "Vista previa HTML"}
+                          </button>
+                        </div>
+                        {showDetailTooltipPreview ? (
+                          <div
+                            className="rounded-lg border bg-white p-2.5 text-xs text-stone-800 prose prose-xs max-w-none min-h-[60px] whitespace-pre-wrap break-words"
+                            dangerouslySetInnerHTML={{
+                              __html: detailTooltip || "<i>Sin tooltip descriptivo aún.</i>",
+                            }}
+                          />
+                        ) : (
+                          <Textarea
+                            value={detailTooltip}
+                            onChange={(e) => setDetailTooltip(e.target.value)}
+                            placeholder="Ej. Grabación en directo en el Teatro Real... Admite etiquetas HTML y formato enriquecido..."
+                            rows={3}
+                            className="text-xs bg-white font-mono"
+                          />
+                        )}
                       </div>
 
                       <div className="flex flex-wrap items-center gap-4 pt-1">
