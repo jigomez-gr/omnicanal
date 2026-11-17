@@ -42,6 +42,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -233,6 +241,7 @@ export function PromocionClient({
   const [repSelectedArtistIds, setRepSelectedArtistIds] = useState<string[]>([])
   const [repMutualAgreement, setRepMutualAgreement] = useState(true)
   const [artistToAddId, setArtistToAddId] = useState("")
+  const [viewingArtist, setViewingArtist] = useState<Snapshot["artists"][number] | null>(null)
 
   // ─── b.3) ABM Salas, Ateneos y Admón. ───
   const [editingVenueId, setEditingVenueId] = useState<string | null>(null)
@@ -492,6 +501,15 @@ export function PromocionClient({
     setArtistImagenPrincipal("")
     setArtistMimeType(".jpg")
     setArtistPatReal("")
+  }
+
+  function handleModifyArtistDirectly(artist: Snapshot["artists"][number]) {
+    setViewingArtist(null)
+    setMaintSubTab("interpretes_videos")
+    loadArtistForEdit(artist)
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" })
+    }
   }
 
   function loadDetailForEdit(d: NonNullable<Snapshot["webMediaDetails"]>[number]) {
@@ -2430,18 +2448,24 @@ export function PromocionClient({
                           ) : (
                             <div className="mt-1.5 flex flex-wrap gap-1.5">
                               {repArtists.map((art) => (
-                                <span
+                                <button
                                   key={art.id}
-                                  className="inline-flex items-center gap-1.5 rounded-md bg-white border border-stone-200 px-2 py-0.5 text-xs text-stone-800 shadow-2xs"
+                                  type="button"
+                                  onClick={() => setViewingArtist(art)}
+                                  className="inline-flex items-center gap-1.5 rounded-md bg-white border border-stone-200 px-2 py-0.5 text-xs text-stone-800 shadow-2xs hover:border-amber-400 hover:bg-amber-50/70 transition-colors cursor-pointer group text-left"
+                                  title="Clic para ver o modificar los datos de este intérprete"
                                 >
-                                  <span className="font-semibold text-stone-900">{art.artisticName}</span>
+                                  <span className="font-semibold text-stone-900 group-hover:text-amber-900">
+                                    {art.artisticName}
+                                  </span>
                                   <span className="text-[10px] text-stone-500 uppercase font-mono">
                                     ({art.discipline})
                                   </span>
                                   <span className="inline-flex items-center text-[9px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1 py-0.2 rounded">
                                     ✓ Acuerdo mutuo
                                   </span>
-                                </span>
+                                  <Eye className="size-3 text-stone-400 group-hover:text-amber-700 ml-0.5" />
+                                </button>
                               ))}
                             </div>
                           )}
@@ -2564,17 +2588,41 @@ export function PromocionClient({
                                 ✓ Acuerdo mutuo
                               </span>
                             </div>
-                            <Button
-                              size="sm"
-                              type="button"
-                              variant="ghost"
-                              className="h-6 px-1.5 text-[11px] text-rose-700 hover:bg-rose-50"
-                              onClick={() => {
-                                setRepSelectedArtistIds(repSelectedArtistIds.filter((id) => id !== art.id))
-                              }}
-                            >
-                              Desvincular
-                            </Button>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Button
+                                size="sm"
+                                type="button"
+                                variant="outline"
+                                className="h-6 px-2 text-[11px] gap-1 text-amber-900 border-amber-300 bg-amber-50 hover:bg-amber-100 font-medium"
+                                onClick={() => setViewingArtist(art)}
+                                title="Visualizar ficha y datos del intérprete"
+                              >
+                                <Eye className="size-3 text-amber-800" />
+                                Ver ficha
+                              </Button>
+                              <Button
+                                size="sm"
+                                type="button"
+                                variant="outline"
+                                className="h-6 px-2 text-[11px] gap-1 text-stone-700 border-stone-300 bg-stone-50 hover:bg-stone-100 font-medium"
+                                onClick={() => handleModifyArtistDirectly(art)}
+                                title="Modificar datos del intérprete en el formulario completo"
+                              >
+                                <Edit3 className="size-3 text-stone-600" />
+                                Modificar
+                              </Button>
+                              <Button
+                                size="sm"
+                                type="button"
+                                variant="ghost"
+                                className="h-6 px-1.5 text-[11px] text-rose-700 hover:bg-rose-50"
+                                onClick={() => {
+                                  setRepSelectedArtistIds(repSelectedArtistIds.filter((id) => id !== art.id))
+                                }}
+                              >
+                                Desvincular
+                              </Button>
+                            </div>
                           </div>
                         )
                       })}
@@ -2608,6 +2656,22 @@ export function PromocionClient({
                             )
                           })}
                       </select>
+                      {artistToAddId && (() => {
+                        const targetArt = snapshot.artists.find((a) => a.id === artistToAddId)
+                        if (!targetArt) return null
+                        return (
+                          <Button
+                            size="sm"
+                            type="button"
+                            variant="outline"
+                            className="h-7 px-2 text-xs gap-1 border-stone-300 bg-white text-stone-800 hover:bg-stone-100"
+                            onClick={() => setViewingArtist(targetArt)}
+                            title="Ver / Modificar ficha de este intérprete"
+                          >
+                            <Eye className="size-3 text-amber-700" /> Ver
+                          </Button>
+                        )
+                      })()}
                       <Button
                         size="sm"
                         type="button"
@@ -4372,6 +4436,213 @@ export function PromocionClient({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ─── Modal para Visualizar / Modificar Ficha del Intérprete ─── */}
+      <Dialog
+        open={Boolean(viewingArtist)}
+        onOpenChange={(open) => {
+          if (!open) setViewingArtist(null)
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[88vh] overflow-y-auto border-amber-300 bg-white p-6 shadow-xl">
+          {viewingArtist && (
+            <>
+              <DialogHeader>
+                <div className="flex items-center gap-2 text-amber-900">
+                  <Guitar className="size-5 text-amber-800" />
+                  <span className="text-xs font-bold uppercase tracking-wider">
+                    Ficha del Intérprete
+                  </span>
+                </div>
+                <DialogTitle className="text-xl font-bold text-stone-900 flex flex-wrap items-center gap-2 mt-1">
+                  <span>{viewingArtist.artisticName}</span>
+                  <Badge className="bg-amber-100 text-amber-900 border-amber-300">
+                    {ARTIST_DISCIPLINE_LABELS[viewingArtist.discipline as ArtistDiscipline] ?? viewingArtist.discipline}
+                  </Badge>
+                  <Badge variant="outline" className="text-xs">
+                    Caché: {viewingArtist.baseCacheEur} € (mín. {viewingArtist.minCacheEur} €)
+                  </Badge>
+                </DialogTitle>
+                <DialogDescription className="text-xs text-stone-500">
+                  Consulta de datos maestros, enlaces web, material multimedia y opciones de modificación directa.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4 my-2 text-xs">
+                {/* Cabecera con imagen y datos identificativos */}
+                <div className="flex flex-col sm:flex-row gap-4 p-3.5 rounded-xl bg-stone-50 border border-stone-200">
+                  {viewingArtist.imagenprincipal ? (
+                    <div className="w-24 h-24 rounded-lg overflow-hidden bg-stone-200 shrink-0 border border-stone-300">
+                      <img
+                        src={viewingArtist.imagenprincipal}
+                        alt={viewingArtist.artisticName}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          ;(e.currentTarget as HTMLImageElement).style.display = "none"
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-24 h-24 rounded-lg bg-amber-100 border border-amber-200 flex flex-col items-center justify-center text-amber-800 shrink-0">
+                      <Music className="size-8 opacity-60" />
+                      <span className="text-[10px] font-semibold mt-1">Sin imagen</span>
+                    </div>
+                  )}
+
+                  <div className="flex-1 space-y-1.5">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <span className="text-stone-400 block text-[10px] uppercase font-bold">Nombre Legal</span>
+                        <span className="text-stone-900 font-semibold">{viewingArtist.legalName || "—"}</span>
+                      </div>
+                      <div>
+                        <span className="text-stone-400 block text-[10px] uppercase font-bold">Ciudad Base</span>
+                        <span className="text-stone-900 font-semibold">{viewingArtist.city || "—"}</span>
+                      </div>
+                      <div>
+                        <span className="text-stone-400 block text-[10px] uppercase font-bold">Teléfono</span>
+                        <span className="text-stone-900">{viewingArtist.phone || "Sin teléfono"}</span>
+                      </div>
+                      <div>
+                        <span className="text-stone-400 block text-[10px] uppercase font-bold">Email</span>
+                        <span className="text-stone-900">{viewingArtist.email || "Sin email"}</span>
+                      </div>
+                    </div>
+
+                    <div className="pt-1.5 border-t border-stone-200/60">
+                      <span className="text-stone-400 block text-[10px] uppercase font-bold">Representación Actual</span>
+                      {(() => {
+                        const rep = snapshot.representatives.find((r) => r.id === viewingArtist.representativeId)
+                        if (rep) {
+                          return (
+                            <span className="text-emerald-900 font-medium flex items-center gap-1.5 mt-0.5">
+                              <UserCheck className="size-3.5 text-emerald-700" />
+                              Representado por <strong>{rep.fullName}</strong> ({rep.agencyName || "Agencia"}) · Acuerdo mutuo activo
+                            </span>
+                          )
+                        }
+                        return (
+                          <span className="text-stone-600 italic flex items-center gap-1 mt-0.5">
+                            Auto-representado (gestionado directamente por el artista)
+                          </span>
+                        )
+                      })()}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Formación y Guitarrista Titular */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="p-3 rounded-lg border border-stone-200 bg-white">
+                    <span className="text-stone-400 block text-[10px] uppercase font-bold mb-1">Guitarrista Titular</span>
+                    <p className="font-semibold text-stone-900">{viewingArtist.leadGuitarist || "No especificado"}</p>
+                    {viewingArtist.alternateGuitarists && (
+                      <p className="text-[11px] text-stone-500 mt-0.5">
+                        Suplentes: {Array.isArray(viewingArtist.alternateGuitarists) ? viewingArtist.alternateGuitarists.join(", ") : viewingArtist.alternateGuitarists}
+                      </p>
+                    )}
+                  </div>
+                  <div className="p-3 rounded-lg border border-stone-200 bg-white">
+                    <span className="text-stone-400 block text-[10px] uppercase font-bold mb-1">Formación Escénica</span>
+                    <p className="text-stone-800">{viewingArtist.groupFormation || "Formación no especificada"}</p>
+                  </div>
+                </div>
+
+                {/* Enlaces web y Redes Sociales */}
+                <div className="p-3 rounded-lg border border-stone-200 bg-white space-y-1.5">
+                  <span className="text-stone-400 block text-[10px] uppercase font-bold">Presencia Web & Redes</span>
+                  <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                    {viewingArtist.websiteUrl ? (
+                      <a
+                        href={viewingArtist.websiteUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 rounded bg-stone-100 px-2 py-1 text-xs text-stone-700 hover:bg-stone-200 hover:text-amber-900"
+                      >
+                        <Globe className="size-3.5" /> Web Oficial
+                      </a>
+                    ) : (
+                      <span className="text-[11px] text-stone-400">Sin web · </span>
+                    )}
+                    {(viewingArtist.instagramUrl || viewingArtist.instagramHandle) && (
+                      <a
+                        href={viewingArtist.instagramUrl || `https://instagram.com/${viewingArtist.instagramHandle?.replace("@", "")}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 rounded bg-pink-50 px-2 py-1 text-xs font-medium text-pink-700 hover:bg-pink-100"
+                      >
+                        <ExternalLink className="size-3.5" /> Instagram
+                      </a>
+                    )}
+                    {viewingArtist.facebookUrl && (
+                      <a
+                        href={viewingArtist.facebookUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
+                      >
+                        <ExternalLink className="size-3.5" /> Facebook
+                      </a>
+                    )}
+                    {viewingArtist.telegramUrl && (
+                      <a
+                        href={viewingArtist.telegramUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 rounded bg-sky-50 px-2 py-1 text-xs font-medium text-sky-700 hover:bg-sky-100"
+                      >
+                        <Send className="size-3.5" /> Telegram
+                      </a>
+                    )}
+                    {viewingArtist.tiktokUrl && (
+                      <a
+                        href={viewingArtist.tiktokUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 rounded bg-neutral-100 px-2 py-1 text-xs font-medium text-stone-800 hover:bg-neutral-200"
+                      >
+                        <ExternalLink className="size-3.5" /> TikTok
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                {/* Biografía Artística (HTML multilínea) */}
+                <div className="p-3.5 rounded-lg border border-amber-200/80 bg-amber-50/40 space-y-1.5">
+                  <span className="text-amber-950 font-bold block text-[11px] uppercase tracking-wider">
+                    Biografía / Presentación Artística
+                  </span>
+                  <div
+                    className="text-stone-700 text-xs leading-relaxed max-h-40 overflow-y-auto pr-1"
+                    dangerouslySetInnerHTML={{
+                      __html: viewingArtist.biography || "<i>Sin biografía artística registrada.</i>",
+                    }}
+                  />
+                </div>
+              </div>
+
+              <DialogFooter className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-2 border-t pt-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setViewingArtist(null)}
+                  className="w-full sm:w-auto text-xs"
+                >
+                  Cerrar
+                </Button>
+                <Button
+                  type="button"
+                  className="w-full sm:w-auto bg-amber-800 hover:bg-amber-900 text-white gap-1.5 text-xs shadow-sm"
+                  onClick={() => handleModifyArtistDirectly(viewingArtist)}
+                >
+                  <Edit3 className="size-3.5" />
+                  Modificar datos del intérprete en formulario completo
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
