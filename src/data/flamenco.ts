@@ -122,6 +122,8 @@ const createRepresentativeSchema = z.object({
   websiteUrl: z.string().trim().max(300).optional().nullable(),
   city: z.string().trim().max(120).default("Madrid"),
   notes: z.string().trim().max(2000).optional().nullable(),
+  representedArtistIds: z.array(z.string().uuid()).optional(),
+  mutualAgreementConfirmed: z.boolean().default(true),
 })
 
 const createVenueSchema = z.object({
@@ -835,6 +837,8 @@ export async function createFlamencoArtist(actor: Actor, rawInput: unknown) {
       youtubeChannelUrl: input.youtubeChannelUrl || null,
       technicalRider: input.technicalRider || null,
       representativeId: input.representativeId || null,
+      representativeAgreed: Boolean(input.representativeId),
+      selfRepresented: !input.representativeId,
       contactId,
     })
     .returning()
@@ -987,6 +991,21 @@ export async function createFlamencoRepresentative(actor: Actor, rawInput: unkno
       contactId,
     })
     .returning()
+
+  if (input.representedArtistIds && input.representedArtistIds.length > 0) {
+    const now = new Date()
+    for (const artistId of input.representedArtistIds) {
+      await db
+        .update(artists)
+        .set({
+          representativeId: created.id,
+          representativeAgreed: input.mutualAgreementConfirmed,
+          selfRepresented: false,
+          updatedAt: now,
+        })
+        .where(eq(artists.id, artistId))
+    }
+  }
 
   return created
 }
@@ -2807,6 +2826,8 @@ export async function updateFlamencoArtist(actor: Actor, rawInput: unknown) {
       youtubeChannelUrl: input.youtubeChannelUrl || null,
       technicalRider: input.technicalRider || null,
       representativeId: input.representativeId || null,
+      representativeAgreed: Boolean(input.representativeId),
+      selfRepresented: !input.representativeId,
       updatedAt: new Date(),
     })
     .where(eq(artists.id, input.id))
@@ -2962,28 +2983,115 @@ export async function updateFlamencoRepresentative(actor: Actor, rawInput: unkno
     .returning()
 
   if (!updated) throw new NotFoundError("Representante no encontrado.")
+
+  if (input.representedArtistIds !== undefined) {
+    const now = new Date()
+    const currentAssigned = await db
+      .select({ id: artists.id })
+      .from(artists)
+      .where(eq(artists.representativeId, input.id))
+
+    const nextIds = new Set(input.representedArtistIds)
+
+    // Los que se quitan: pasan a representarse a sí mismos (auto-representación)
+    for (const artist of currentAssigned) {
+      if (!nextIds.has(artist.id)) {
+        await db
+          .update(artists)
+          .set({
+            representativeId: null,
+            selfRepresented: true,
+            representativeAgreed: false,
+            representationNoticeSentAt: now,
+            updatedAt: now,
+          })
+          .where(eq(artists.id, artist.id))
+      }
+    }
+
+    // Los que se asignan a este representante:
+    for (const artistId of input.representedArtistIds) {
+      await db
+        .update(artists)
+        .set({
+          representativeId: input.id,
+          selfRepresented: false,
+          representativeAgreed: input.mutualAgreementConfirmed,
+          updatedAt: now,
+        })
+        .where(eq(artists.id, artistId))
+    }
+  }
+
   return updated
 }
 
 export async function deleteFlamencoRepresentative(actor: Actor, repId: string) {
   assertCan(actor, PERMISSIONS.campaigns.manage)
-  const deleted = await db.transaction(async (tx) => {
-    await tx
-      .update(artists)
-      .set({ representativeId: null })
+  const result = await db.transaction(async (tx) => {
+    // 1. Localizar los artistas que representaba
+    const repArtists = await tx
+      .select({
+        id: artists.id,
+        artisticName: artists.artisticName,
+        email: artists.email,
+        phone: artists.phone,
+      })
+      .from(artists)
       .where(eq(artists.representativeId, repId))
+
+    const now = new Date()
+
+    // 2. Notificar y nombrarles que pasan a representarse a sí mismos (auto-representación)
+    if (repArtists.length > 0) {
+      await tx
+        .update(artists)
+        .set({
+          representativeId: null,
+          selfRepresented: true,
+          representativeAgreed: false,
+          representationNoticeSentAt: now,
+          updatedAt: now,
+        })
+        .where(eq(artists.representativeId, repId))
+    }
+
+    // 3. Desvincular conciertos
     await tx
       .update(concerts)
-      .set({ representativeId: null })
+      .set({ representativeId: null, updatedAt: now })
       .where(eq(concerts.representativeId, repId))
+
+    // 4. Eliminar el representante
     const [del] = await tx
       .delete(representatives)
       .where(eq(representatives.id, repId))
       .returning()
     if (!del) throw new NotFoundError("Representante no encontrado.")
-    return del
+
+    return {
+      deleted: del,
+      notifiedArtists: repArtists.map((a) => ({
+        id: a.id,
+        artisticName: a.artisticName,
+        notice: `Se ha avisado a ${a.artisticName} comunicándole que causó baja su representante ${del.fullName} y que a partir de ahora pasa a representarse a sí mismo/a (auto-representación), solicitando su confirmación.`,
+      })),
+    }
   })
-  return deleted
+
+  await writeAudit({
+    actor,
+    action: "campaign.deleted",
+    targetType: "contact",
+    targetId: result.deleted.id,
+    metadata: {
+      representativeName: result.deleted.fullName,
+      affectedArtists: result.notifiedArtists.map((a) => a.artisticName),
+      notice: "Artistas avisados de cese de representante y pasados a auto-representación.",
+    },
+  })
+
+  return result
 }
 
 const updateVenueSchema = createVenueSchema.extend({

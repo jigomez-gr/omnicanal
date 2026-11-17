@@ -19,8 +19,10 @@ import {
   createFlamencoConcert,
   createFlamencoContract,
   createFlamencoMediaAsset,
+  createFlamencoRepresentative,
   createFlamencoVenue,
   deleteArtistWebMediaDetail,
+  deleteFlamencoRepresentative,
   evaluateEventMinAttendeesCancellation,
   getCalcomConfig,
   getFlamencoHubSnapshot,
@@ -36,6 +38,7 @@ import {
   toggleCallReview,
   updateArtistWebMediaDetail,
   updateCalcomConfig,
+  updateFlamencoRepresentative,
   updatePaymentConfig,
   updateVapiAndZadarmaConfig,
 } from "./flamenco"
@@ -577,5 +580,93 @@ describe("Agencia de Promoción Flamenca, Cal.com, Stripe y VAPI/Zadarma", () =>
         textoMostrar: "Dossier artístico",
       }),
     ).rejects.toThrow(AuthError)
+  })
+
+  it("[FLA-REP-01] gestión de artistas representados, acuerdo mutuo (1 a 1) y aviso de auto-representación al dar de baja", async () => {
+    // 1. Crear dos artistas
+    const artist1 = await createFlamencoArtist(owner.actor, {
+      artisticName: "Rocío de Córdoba",
+      discipline: "cante",
+      baseCacheEur: 2100,
+    })
+    const artist2 = await createFlamencoArtist(owner.actor, {
+      artisticName: "Pepe el Moreno",
+      discipline: "toque",
+      baseCacheEur: 1600,
+    })
+
+    // Al inicio ambos deben ser auto-representados
+    expect(artist1.selfRepresented).toBe(true)
+    expect(artist1.representativeId).toBeNull()
+
+    // 2. Crear un representante y asignarle a artist1 con acuerdo mutuo
+    const repA = await createFlamencoRepresentative(owner.actor, {
+      fullName: "Carlos Flamenco Management",
+      agencyName: "Andalucía Escénica",
+      roleKind: "manager",
+      commissionPercent: 15,
+      city: "Sevilla",
+      representedArtistIds: [artist1.id],
+      mutualAgreementConfirmed: true,
+    })
+
+    let snapshot = await getFlamencoHubSnapshot(viewer.actor)
+    let a1 = snapshot.artists.find((a) => a.id === artist1.id)!
+    expect(a1.representativeId).toBe(repA.id)
+    expect(a1.representativeAgreed).toBe(true)
+    expect(a1.selfRepresented).toBe(false)
+
+    // 3. Crear segundo representante repB y reasignarle a artist1 (1 artista solo puede tener 1 representante)
+    const repB = await createFlamencoRepresentative(owner.actor, {
+      fullName: "Lucía Agencia Flamenca",
+      agencyName: "Compás Global",
+      roleKind: "booking_agent",
+      commissionPercent: 12,
+      city: "Madrid",
+      representedArtistIds: [artist1.id, artist2.id],
+      mutualAgreementConfirmed: true,
+    })
+
+    snapshot = await getFlamencoHubSnapshot(viewer.actor)
+    a1 = snapshot.artists.find((a) => a.id === artist1.id)!
+    let a2 = snapshot.artists.find((a) => a.id === artist2.id)!
+    // artist1 ahora pertenece a repB (el anterior quedó desvinculado)
+    expect(a1.representativeId).toBe(repB.id)
+    expect(a1.representativeAgreed).toBe(true)
+    expect(a2.representativeId).toBe(repB.id)
+
+    // Los artistas que tenía repA ahora son 0
+    const repAArtists = snapshot.artists.filter((a) => a.representativeId === repA.id)
+    expect(repAArtists.length).toBe(0)
+
+    // 4. Modificar repB: desvincular a artist2 para que pase a representarse a sí mismo
+    await updateFlamencoRepresentative(owner.actor, {
+      id: repB.id,
+      fullName: repB.fullName,
+      roleKind: repB.roleKind,
+      commissionPercent: repB.commissionPercent,
+      city: repB.city,
+      representedArtistIds: [artist1.id], // se excluye a artist2
+      mutualAgreementConfirmed: true,
+    })
+
+    snapshot = await getFlamencoHubSnapshot(viewer.actor)
+    a2 = snapshot.artists.find((a) => a.id === artist2.id)!
+    expect(a2.representativeId).toBeNull()
+    expect(a2.selfRepresented).toBe(true)
+    expect(a2.representationNoticeSentAt).toBeTruthy()
+
+    // 5. Dar de baja repB: debe avisar a artist1, nombrarle que se representa a sí mismo y registrar la confirmación
+    const deleteRes = await deleteFlamencoRepresentative(owner.actor, repB.id)
+    expect(deleteRes.deleted.id).toBe(repB.id)
+    expect(deleteRes.notifiedArtists.length).toBe(1)
+    expect(deleteRes.notifiedArtists[0].artisticName).toBe("Rocío de Córdoba")
+    expect(deleteRes.notifiedArtists[0].notice).toContain("auto-representación")
+
+    snapshot = await getFlamencoHubSnapshot(viewer.actor)
+    a1 = snapshot.artists.find((a) => a.id === artist1.id)!
+    expect(a1.representativeId).toBeNull()
+    expect(a1.selfRepresented).toBe(true)
+    expect(a1.representationNoticeSentAt).toBeTruthy()
   })
 })

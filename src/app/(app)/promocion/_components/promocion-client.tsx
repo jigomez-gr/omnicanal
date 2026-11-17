@@ -230,6 +230,9 @@ export function PromocionClient({
   const [repEmail, setRepEmail] = useState("")
   const [repCity, setRepCity] = useState("Madrid")
   const [repNotes, setRepNotes] = useState("")
+  const [repSelectedArtistIds, setRepSelectedArtistIds] = useState<string[]>([])
+  const [repMutualAgreement, setRepMutualAgreement] = useState(true)
+  const [artistToAddId, setArtistToAddId] = useState("")
 
   // ─── b.3) ABM Salas, Ateneos y Admón. ───
   const [editingVenueId, setEditingVenueId] = useState<string | null>(null)
@@ -551,6 +554,10 @@ export function PromocionClient({
     setRepEmail(r.email ?? "")
     setRepCity(r.city)
     setRepNotes(r.notes ?? "")
+    const assignedArtists = snapshot.artists.filter((a) => a.representativeId === r.id)
+    setRepSelectedArtistIds(assignedArtists.map((a) => a.id))
+    setRepMutualAgreement(true)
+    setArtistToAddId("")
     setFeedback(`Editando representante «${r.fullName}».`)
   }
 
@@ -560,6 +567,9 @@ export function PromocionClient({
     setRepPhone("")
     setRepEmail("")
     setRepNotes("")
+    setRepSelectedArtistIds([])
+    setRepMutualAgreement(true)
+    setArtistToAddId("")
   }
 
   function loadVenueForEdit(v: Snapshot["venues"][number]) {
@@ -2368,21 +2378,30 @@ export function PromocionClient({
                             const repConcerts = snapshot.concerts.filter((c) => c.representativeId === rep.id)
 
                             setDeletionConfirm({
-                              title: "¿Confirmar baja del representante o agencia?",
+                              title: `¿Confirmar baja de «${rep.fullName}» y avisar a representados?`,
                               entityName: rep.fullName,
-                              description: "Se dará de baja el representante. Para evitar inconsistencias, sus relaciones se desvincularán de forma limpia sin eliminar los artistas ni los eventos:",
-                              warnings: [
+                              description:
                                 repArtists.length > 0
-                                  ? `Se desvincularán ${repArtists.length} intérpretes (quedarán sin representante asignado sin perder sus datos).`
-                                  : "No tiene intérpretes vinculados.",
+                                  ? `Se dará de baja al representante. El sistema avisará de inmediato a los ${repArtists.length} artista(s) representados comunicándoles que a partir de este momento pasan a representarse a sí mismos (auto-representación) y solicitará su confirmación:`
+                                  : "Se dará de baja el representante. Actualmente no tiene artistas asignados.",
+                              warnings: [
+                                ...(repArtists.length > 0
+                                  ? repArtists.map(
+                                      (a) =>
+                                        `• Intérprete: ${a.artisticName} (${a.discipline}) -> Se le notifica cese y pasa a auto-representación`,
+                                    )
+                                  : ["Sin artistas a notificar."]),
                                 repConcerts.length > 0
-                                  ? `Se desvincularán ${repConcerts.length} conciertos programados.`
-                                  : "No tiene conciertos vinculados.",
+                                  ? `Se desvincularán ${repConcerts.length} evento(s) programados.`
+                                  : "Sin eventos vinculados.",
                               ],
                               onConfirm: async () => {
-                                await deleteRepresentativeAction(rep.id)
+                                const res = await deleteRepresentativeAction(rep.id)
                                 if (editingRepId === rep.id) resetRepForm()
-                                setFeedback(`Representante «${rep.fullName}» eliminado.`)
+                                const notifiedCount = res?.notifiedArtists?.length ?? repArtists.length
+                                setFeedback(
+                                  `Representante «${rep.fullName}» dado de baja. Se ha avisado a ${notifiedCount} artista(s) notificándoles que pasan a representarse a sí mismos.`,
+                                )
                                 router.refresh()
                               },
                             })
@@ -2392,6 +2411,44 @@ export function PromocionClient({
                         </Button>
                       </div>
                     </div>
+
+                    {/* Artistas representados por este representante */}
+                    {(() => {
+                      const repArtists = snapshot.artists.filter((a) => a.representativeId === rep.id)
+                      return (
+                        <div className="mt-2.5 rounded-lg bg-stone-50 border border-stone-200/80 p-2.5">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-semibold text-stone-800 flex items-center gap-1.5">
+                              <Guitar className="size-3.5 text-amber-800" />
+                              Artistas que representa ({repArtists.length}):
+                            </span>
+                          </div>
+                          {repArtists.length === 0 ? (
+                            <p className="mt-1 text-[11px] italic text-stone-400">
+                              Actualmente no representa a ningún artista (disponible).
+                            </p>
+                          ) : (
+                            <div className="mt-1.5 flex flex-wrap gap-1.5">
+                              {repArtists.map((art) => (
+                                <span
+                                  key={art.id}
+                                  className="inline-flex items-center gap-1.5 rounded-md bg-white border border-stone-200 px-2 py-0.5 text-xs text-stone-800 shadow-2xs"
+                                >
+                                  <span className="font-semibold text-stone-900">{art.artisticName}</span>
+                                  <span className="text-[10px] text-stone-500 uppercase font-mono">
+                                    ({art.discipline})
+                                  </span>
+                                  <span className="inline-flex items-center text-[9px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1 py-0.2 rounded">
+                                    ✓ Acuerdo mutuo
+                                  </span>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
+
                     {rep.notes && <p className="mt-2 text-xs text-stone-600">{rep.notes}</p>}
                   </div>
                 ))}
@@ -2473,8 +2530,147 @@ export function PromocionClient({
                   </div>
                 </div>
 
+                {/* SECCIÓN ARTISTAS REPRESENTADOS & ACUERDO MUTUO */}
+                <div className="rounded-xl border border-amber-300 bg-amber-50/50 p-3.5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                      <Guitar className="size-3.5 text-amber-800" />
+                      Artistas que representa ({repSelectedArtistIds.length})
+                    </Label>
+                    <span className="text-[10px] text-stone-500 font-medium">
+                      1 artista = 1 representante
+                    </span>
+                  </div>
+
+                  {/* Lista de artistas asignados a este representante */}
+                  {repSelectedArtistIds.length === 0 ? (
+                    <p className="text-xs italic text-stone-500 bg-white p-2.5 rounded-lg border border-dashed border-stone-300 text-center">
+                      Ningún artista asignado actualmente a este representante.
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                      {repSelectedArtistIds.map((artId) => {
+                        const art = snapshot.artists.find((a) => a.id === artId)
+                        if (!art) return null
+                        return (
+                          <div
+                            key={art.id}
+                            className="flex items-center justify-between gap-2 rounded-lg border border-stone-200 bg-white p-2 text-xs shadow-2xs"
+                          >
+                            <div className="flex items-center gap-1.5 truncate">
+                              <span className="font-bold text-stone-900">{art.artisticName}</span>
+                              <span className="text-[10px] text-stone-500 font-mono">({art.discipline})</span>
+                              <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded">
+                                ✓ Acuerdo mutuo
+                              </span>
+                            </div>
+                            <Button
+                              size="sm"
+                              type="button"
+                              variant="ghost"
+                              className="h-6 px-1.5 text-[11px] text-rose-700 hover:bg-rose-50"
+                              onClick={() => {
+                                setRepSelectedArtistIds(repSelectedArtistIds.filter((id) => id !== art.id))
+                              }}
+                            >
+                              Desvincular
+                            </Button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  {/* Selector para añadir otro artista */}
+                  <div className="space-y-1 pt-2 border-t border-amber-200/80">
+                    <Label className="text-[11px] font-semibold text-stone-700">
+                      Asignar artista a este representante:
+                    </Label>
+                    <div className="flex gap-1.5">
+                      <select
+                        className="flex-1 rounded-md border border-stone-300 px-2 py-1 text-xs bg-white"
+                        value={artistToAddId}
+                        onChange={(e) => setArtistToAddId(e.target.value)}
+                      >
+                        <option value="">-- Seleccionar artista del catálogo --</option>
+                        {snapshot.artists
+                          .filter((a) => !repSelectedArtistIds.includes(a.id))
+                          .map((a) => {
+                            const otherRep =
+                              a.representativeId && a.representativeId !== editingRepId
+                                ? snapshot.representatives.find((r) => r.id === a.representativeId)
+                                : null
+                            return (
+                              <option key={a.id} value={a.id}>
+                                {a.artisticName} ({a.discipline})
+                                {otherRep ? ` [Con: ${otherRep.fullName}]` : " [Auto-representado]"}
+                              </option>
+                            )
+                          })}
+                      </select>
+                      <Button
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                        disabled={!artistToAddId}
+                        className="h-7 text-xs bg-white text-stone-800"
+                        onClick={() => {
+                          if (artistToAddId && !repSelectedArtistIds.includes(artistToAddId)) {
+                            setRepSelectedArtistIds([...repSelectedArtistIds, artistToAddId])
+                            setArtistToAddId("")
+                          }
+                        }}
+                      >
+                        <Plus className="size-3 mr-1" /> Asignar
+                      </Button>
+                    </div>
+                    {(() => {
+                      const targetArt = snapshot.artists.find((a) => a.id === artistToAddId)
+                      const otherRep =
+                        targetArt?.representativeId && targetArt.representativeId !== editingRepId
+                          ? snapshot.representatives.find((r) => r.id === targetArt.representativeId)
+                          : null
+                      if (otherRep) {
+                        return (
+                          <p className="text-[10px] text-amber-900 bg-amber-100/80 p-1.5 rounded border border-amber-200">
+                            <strong>Aviso importante:</strong> {targetArt?.artisticName} está actualmente con <strong>{otherRep.fullName}</strong>. Un artista solo puede tener un único representante, por lo que al guardar se rescindirá el anterior y se transferirá aquí.
+                          </p>
+                        )
+                      }
+                      return null
+                    })()}
+                  </div>
+
+                  {/* Casilla de acuerdo mutuo obligatoria */}
+                  {repSelectedArtistIds.length > 0 && (
+                    <div className="rounded-lg bg-white p-2.5 border border-emerald-200">
+                      <label className="flex items-start gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={repMutualAgreement}
+                          onChange={(e) => setRepMutualAgreement(e.target.checked)}
+                          className="mt-0.5 rounded border-stone-300 text-emerald-700"
+                        />
+                        <span className="text-xs text-stone-800">
+                          <strong>Acuerdo mutuo confirmado:</strong> El artista y el representante están conformes con esta representación oficial.
+                        </span>
+                      </label>
+                      {!repMutualAgreement && (
+                        <p className="mt-1 text-[10px] text-rose-600 font-medium">
+                          * Ambas partes deben estar de acuerdo para formalizar la representación.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 <Button
-                  disabled={!canManage || isPending || !repName.trim()}
+                  disabled={
+                    !canManage ||
+                    isPending ||
+                    !repName.trim() ||
+                    (repSelectedArtistIds.length > 0 && !repMutualAgreement)
+                  }
                   className="w-full bg-amber-800 hover:bg-amber-900"
                   onClick={() => {
                     startTransition(async () => {
@@ -2488,13 +2684,15 @@ export function PromocionClient({
                         email: repEmail || null,
                         city: repCity,
                         notes: repNotes || null,
+                        representedArtistIds: repSelectedArtistIds,
+                        mutualAgreementConfirmed: repMutualAgreement,
                       }
                       if (editingRepId) {
                         await updateRepresentativeAction(payload)
-                        setFeedback(`Representante «${repName}» actualizado.`)
+                        setFeedback(`Representante «${repName}» actualizado con ${repSelectedArtistIds.length} artista(s) representados.`)
                       } else {
                         await createRepresentativeAction(payload)
-                        setFeedback(`Representante «${repName}» dado de alta.`)
+                        setFeedback(`Representante «${repName}» dado de alta con ${repSelectedArtistIds.length} artista(s) representados.`)
                       }
                       resetRepForm()
                       router.refresh()
