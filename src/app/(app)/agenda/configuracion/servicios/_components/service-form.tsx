@@ -235,9 +235,9 @@ export function ServiceForm({ service, resources, mode, words, onDone }: Service
   const dispVideoParticular = getDisplayUrl(videoParticularUrl, videoParticularPath);
 
   return (
-    <form onSubmit={submit} noValidate className="grid gap-6 p-4 text-sm pb-10">
+    <form onSubmit={submit} noValidate className="grid gap-5 p-3 sm:p-5 text-sm pb-24">
       {/* ─── BLOQUE 1: MODALIDAD Y HORARIOS OFICIALES ─── */}
-      <section className="rounded-xl border bg-card p-4 shadow-sm space-y-4">
+      <section className="rounded-xl border bg-card p-3.5 sm:p-4 shadow-sm space-y-4">
         <div className="flex items-center gap-2 border-b pb-2">
           <Calendar className="size-4 text-primary" />
           <h3 className="font-semibold text-foreground">Bloque 1: Modalidad y Horarios Oficiales</h3>
@@ -245,7 +245,7 @@ export function ServiceForm({ service, resources, mode, words, onDone }: Service
 
         <div>
           <Label className="text-xs font-medium mb-1.5 block">Modalidad del Servicio</Label>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => setServiceType("recurring")}
@@ -664,7 +664,7 @@ export function ServiceForm({ service, resources, mode, words, onDone }: Service
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
           <FieldFrame
             id="service-maxPeople"
             label={capacityMode ? "Aforo por turno / Plazas máx" : "Aforo (Plazas por slot)"}
@@ -720,7 +720,7 @@ export function ServiceForm({ service, resources, mode, words, onDone }: Service
           <h3 className="font-semibold text-foreground">Bloque 5: Precios y Forma de Cobro</h3>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-3.5 grid-cols-1 md:grid-cols-2">
           <div>
             <TextInput
               name="price"
@@ -903,7 +903,7 @@ export function ServiceForm({ service, resources, mode, words, onDone }: Service
           <h3 className="font-semibold text-foreground">Bloque 7: Duración, Antelación y Márgenes</h3>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
           <NumberInput
             name="durationMin"
             label={capacityMode ? "Duración mesa (min)" : "Duración (minutos)"}
@@ -1122,11 +1122,11 @@ export function ServiceForm({ service, resources, mode, words, onDone }: Service
       </section>
 
       <FormMessage result={failure ?? undefined} />
-      <div className="sticky bottom-0 z-10 -mx-4 -mb-10 flex justify-end gap-2 border-t bg-background/95 p-4 backdrop-blur">
-        <Button type="button" variant="outline" onClick={onDone} disabled={pending}>
+      <div className="sticky bottom-0 z-30 -mx-3 -mb-24 sm:-mx-5 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2.5 border-t bg-background/95 p-3.5 sm:p-4 backdrop-blur shadow-lg">
+        <Button type="button" variant="outline" onClick={onDone} disabled={pending} className="w-full sm:w-auto">
           Cancelar
         </Button>
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" disabled={pending} className="w-full sm:w-auto">
           {pending ? <LoaderCircle aria-hidden className="animate-spin motion-reduce:animate-none size-4 mr-2" /> : null}
           {pending ? "Guardando…" : service ? "Guardar cambios" : "Crear servicio"}
         </Button>

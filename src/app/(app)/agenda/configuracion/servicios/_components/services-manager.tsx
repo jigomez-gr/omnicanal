@@ -135,7 +135,11 @@ export function ServicesManager({ services, resources, mode, words }: ServicesMa
       )}
 
       <Sheet open={editing !== null} onOpenChange={(open) => (open ? undefined : setEditing(null))}>
-        <SheetContent side="right" showCloseButton={false} className="w-full gap-0 overflow-y-auto sm:max-w-2xl">
+        <SheetContent
+          side="right"
+          showCloseButton={false}
+          className="w-full gap-0 overflow-y-auto sm:max-w-2xl md:max-w-3xl lg:max-w-3xl mr-0 sm:mr-28 md:mr-36 lg:mr-48 xl:mr-56 sm:my-3 sm:h-[calc(100vh-1.5rem)] sm:rounded-2xl sm:border sm:shadow-2xl max-w-full sm:max-w-[calc(100vw-9rem)] md:max-w-[calc(100vw-12rem)]"
+        >
           <SheetHeader className="flex-row items-start justify-between gap-2 border-b">
             <div className="flex min-w-0 flex-col gap-1">
               <SheetTitle>{editing === "new" || editing === null ? "Nuevo servicio" : editing.name}</SheetTitle>
