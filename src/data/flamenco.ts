@@ -39,6 +39,7 @@ import {
 import {
   ARTIST_DIGITAL_PACK_PRESETS,
   buildConcertOfferTexts,
+  detectMediaPlatformFromUrl,
   extractYouTubeVideoId,
   FLAMENCO_MEDIA_PIECES,
   getFlamencoCrmUrl,
@@ -236,7 +237,7 @@ const createMediaAssetSchema = z.object({
   pieceCode: z.string().trim().min(1).max(80),
   customPieceLabel: z.string().trim().max(160).optional().nullable(),
   sourcePlatform: z
-    .enum(["plataforma", "youtube", "vimeo", "instagram", "otro"])
+    .enum(["plataforma", "youtube", "tiktok", "vimeo", "instagram", "otro"])
     .default("plataforma"),
   title: z.string().trim().min(1).max(200),
   formatLabel: z.string().trim().max(80).default("16:9 · MP4"),
@@ -869,9 +870,10 @@ export async function createFlamencoMediaAsset(actor: Actor, rawInput: unknown) 
   }
 
   const detectedYtId = extractYouTubeVideoId(input.fileUrl)
+  const detectedPlatform = detectMediaPlatformFromUrl(input.fileUrl)
   const effectivePlatform: MediaSourcePlatform =
-    detectedYtId && input.sourcePlatform === "plataforma"
-      ? "youtube"
+    input.sourcePlatform === "plataforma" && detectedPlatform
+      ? detectedPlatform
       : (input.sourcePlatform as MediaSourcePlatform)
 
   const [created] = await db
@@ -2913,9 +2915,10 @@ export async function updateFlamencoMediaAsset(actor: Actor, rawInput: unknown) 
   const input = parseInput(updateMediaAssetSchema, rawInput)
 
   const detectedYtId = extractYouTubeVideoId(input.fileUrl)
+  const detectedPlatform = detectMediaPlatformFromUrl(input.fileUrl)
   const effectivePlatform: MediaSourcePlatform =
-    detectedYtId && input.sourcePlatform === "plataforma"
-      ? "youtube"
+    input.sourcePlatform === "plataforma" && detectedPlatform
+      ? detectedPlatform
       : (input.sourcePlatform as MediaSourcePlatform)
 
   const [updated] = await db

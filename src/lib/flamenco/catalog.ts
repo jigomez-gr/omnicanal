@@ -65,6 +65,7 @@ export type EventKind =
 export type MediaSourcePlatform =
   | "plataforma"
   | "youtube"
+  | "tiktok"
   | "vimeo"
   | "instagram"
   | "otro"
@@ -269,6 +270,7 @@ export const EVENT_KIND_LABELS: Record<EventKind, string> = {
 export const MEDIA_SOURCE_PLATFORM_LABELS: Record<MediaSourcePlatform, string> = {
   plataforma: "Nuestra Plataforma (Archivo directo .MP4 / PDF / Imagen)",
   youtube: "YouTube (Vídeo / Short / Directo embebido)",
+  tiktok: "TikTok (Vídeo vertical / cuenta)",
   vimeo: "Vimeo",
   instagram: "Instagram / Reel externo",
   otro: "Otra plataforma externa",
@@ -281,6 +283,24 @@ export function extractYouTubeVideoId(url: string | null | undefined): string | 
     trimmed.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([A-Za-z0-9_-]{6,15})/) ??
     null
   return match?.[1] ?? null
+}
+
+export function detectMediaPlatformFromUrl(url: string | null | undefined): MediaSourcePlatform | null {
+  if (!url) return null
+  const trimmed = url.trim()
+  if (extractYouTubeVideoId(trimmed) || /youtube\.com|youtu\.be/i.test(trimmed)) {
+    return "youtube"
+  }
+  if (/tiktok\.com/i.test(trimmed)) {
+    return "tiktok"
+  }
+  if (/vimeo\.com/i.test(trimmed)) {
+    return "vimeo"
+  }
+  if (/instagram\.com/i.test(trimmed)) {
+    return "instagram"
+  }
+  return null
 }
 
 export const CONCERT_STATUS_LABELS: Record<string, string> = {

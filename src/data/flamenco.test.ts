@@ -366,12 +366,32 @@ describe("Agencia de Promoción Flamenca, Cal.com, Stripe y VAPI/Zadarma", () =>
       pieceCode: "1_completo_horizontal",
       sourcePlatform: "youtube",
       title: "Concierto en directo en YouTube · Paco de Lavapiés",
-      fileUrl: "https://www.youtube.com/watch?v=M7lc1UVf-VE",
+      fileUrl: "https://www.youtube.com/watch?v=2FZZ-JbxFqw",
       durationSeconds: 480,
       releasePhase: "referencia_web",
     })
     expect(ytMedia.sourcePlatform).toBe("youtube")
-    expect(ytMedia.youtubeVideoId).toBe("M7lc1UVf-VE")
+    expect(ytMedia.youtubeVideoId).toBe("2FZZ-JbxFqw")
+    expect(ytMedia.thumbnailUrl).toBe("https://img.youtube.com/vi/2FZZ-JbxFqw/hqdefault.jpg")
+
+    // Comprobar detección automática de YouTube y TikTok desde la URL sin necesidad de indicar plataforma
+    const autoYtMedia = await createFlamencoMediaAsset(owner.actor, {
+      artistId: artist.id,
+      pieceCode: "2_promo_horizontal",
+      title: "Vídeo Promocional YouTube Auto",
+      fileUrl: "https://youtu.be/2FZZ-JbxFqw",
+    })
+    expect(autoYtMedia.sourcePlatform).toBe("youtube")
+    expect(autoYtMedia.youtubeVideoId).toBe("2FZZ-JbxFqw")
+
+    const tiktokMedia = await createFlamencoMediaAsset(owner.actor, {
+      artistId: artist.id,
+      pieceCode: "5_vertical_completo",
+      sourcePlatform: "tiktok",
+      title: "Vídeo en TikTok · Toque Flamenco",
+      fileUrl: "https://www.tiktok.com/@soniquete/video/7345678901234567890",
+    })
+    expect(tiktokMedia.sourcePlatform).toBe("tiktok")
 
     const customMedia = await createFlamencoMediaAsset(owner.actor, {
       artistId: artist.id,
@@ -431,7 +451,7 @@ describe("Agencia de Promoción Flamenca, Cal.com, Stripe y VAPI/Zadarma", () =>
     const artistAllVideos = snapshot.mediaAssets.filter(
       (m) => m.artistId === artist.id || m.concertId === viaje.id,
     )
-    expect(artistAllVideos.some((m) => m.youtubeVideoId === "M7lc1UVf-VE")).toBe(true)
+    expect(artistAllVideos.some((m) => m.youtubeVideoId === "2FZZ-JbxFqw")).toBe(true)
     expect(
       artistAllVideos.some(
         (m) =>

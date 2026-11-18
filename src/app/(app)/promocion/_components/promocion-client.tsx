@@ -59,7 +59,9 @@ import type { getFlamencoHubSnapshot } from "@/data/flamenco"
 import {
   ARTIST_DISCIPLINE_LABELS,
   CONCERT_STATUS_LABELS,
+  detectMediaPlatformFromUrl,
   EVENT_KIND_LABELS,
+  extractYouTubeVideoId,
   FLAMENCO_CRM_URL,
   FLAMENCO_DETAIL_MIME_LABELS,
   FLAMENCO_DETAIL_MIME_TYPES,
@@ -1590,9 +1592,36 @@ export function PromocionClient({
                                 >
                                   <div>
                                     <div className="flex items-center justify-between gap-1">
-                                      <Badge variant="outline" className="text-[10px]">
-                                        {m.pieceCode}
-                                      </Badge>
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <Badge variant="outline" className="text-[10px]">
+                                          {m.pieceCode}
+                                        </Badge>
+                                        {m.sourcePlatform === "youtube" && (
+                                          <Badge className="bg-red-100 text-red-800 border-red-200 text-[10px] font-medium">
+                                            YouTube
+                                          </Badge>
+                                        )}
+                                        {m.sourcePlatform === "tiktok" && (
+                                          <Badge className="bg-stone-900 text-white border-stone-800 text-[10px] font-medium">
+                                            TikTok
+                                          </Badge>
+                                        )}
+                                        {m.sourcePlatform === "vimeo" && (
+                                          <Badge className="bg-sky-100 text-sky-800 border-sky-200 text-[10px] font-medium">
+                                            Vimeo
+                                          </Badge>
+                                        )}
+                                        {m.sourcePlatform === "instagram" && (
+                                          <Badge className="bg-pink-100 text-pink-800 border-pink-200 text-[10px] font-medium">
+                                            Instagram
+                                          </Badge>
+                                        )}
+                                        {m.sourcePlatform === "plataforma" && (
+                                          <Badge variant="secondary" className="text-[10px]">
+                                            Plataforma
+                                          </Badge>
+                                        )}
+                                      </div>
                                       <div className="flex items-center gap-1">
                                         <button
                                           type="button"
@@ -1626,19 +1655,46 @@ export function PromocionClient({
                                         </button>
                                       </div>
                                     </div>
-                                    <p className="mt-1 font-semibold text-stone-900">{m.title}</p>
-                                    <p className="truncate text-[11px] text-stone-500">{m.fileUrl}</p>
+
+                                    <div className="mt-2 flex items-start gap-2.5">
+                                      {(m.thumbnailUrl || m.youtubeVideoId) && (
+                                        <div className="relative h-12 w-20 shrink-0 overflow-hidden rounded border bg-stone-100 shadow-2xs">
+                                          <img
+                                            src={m.thumbnailUrl || (m.youtubeVideoId ? `https://img.youtube.com/vi/${m.youtubeVideoId}/hqdefault.jpg` : "")}
+                                            alt={m.title}
+                                            className="size-full object-cover"
+                                          />
+                                          {m.sourcePlatform === "youtube" && (
+                                            <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                                              <PlayCircle className="size-4 text-white drop-shadow" />
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                      <div className="min-w-0 flex-1">
+                                        <p className="font-semibold text-stone-900 line-clamp-1">{m.title}</p>
+                                        <p className="truncate text-[11px] text-stone-500 font-mono">{m.fileUrl}</p>
+                                      </div>
+                                    </div>
                                   </div>
-                                  <div className="mt-2 flex items-center justify-between">
+                                  <div className="mt-2 flex items-center justify-between border-t pt-2">
                                     <span className="text-[10px] text-stone-500">{m.formatLabel}</span>
                                     <a
                                       href={m.fileUrl}
                                       target="_blank"
                                       rel="noreferrer"
-                                      className="inline-flex items-center gap-1 font-semibold text-amber-800 hover:underline"
+                                      className="inline-flex items-center gap-1 font-semibold text-amber-800 hover:underline text-[11px]"
                                     >
                                       <PlayCircle className="size-3.5" />
-                                      Abrir
+                                      {m.sourcePlatform === "youtube"
+                                        ? "Ver en YouTube"
+                                        : m.sourcePlatform === "tiktok"
+                                          ? "Ver en TikTok"
+                                          : m.sourcePlatform === "instagram"
+                                            ? "Ver en Instagram"
+                                            : m.sourcePlatform === "vimeo"
+                                              ? "Ver en Vimeo"
+                                              : "Abrir"}
                                     </a>
                                   </div>
                                 </div>
@@ -2097,12 +2153,44 @@ export function PromocionClient({
                         />
                       </div>
                       <div>
-                        <Label>URL o ruta en /api/media/stream/... *</Label>
+                        <Label>URL o ruta del archivo o vídeo *</Label>
                         <Input
                           value={pieceUrl}
-                          onChange={(e) => setPieceUrl(e.target.value)}
-                          placeholder="/api/media/stream/services/act-1-presentacion.mp4 o https://youtu.be/..."
+                          onChange={(e) => {
+                            const val = e.target.value
+                            setPieceUrl(val)
+                            const detected = detectMediaPlatformFromUrl(val)
+                            if (detected) {
+                              setSourcePlatform(detected)
+                            }
+                          }}
+                          placeholder="https://www.youtube.com/watch?v=2FZZ-JbxFqw, https://www.tiktok.com/@..., o /api/media/stream/..."
                         />
+                        <p className="mt-1 text-[11px] text-stone-500">
+                          Admite vídeos directos (.mp4), enlaces de YouTube (se detecta la miniatura e ID), TikTok, Vimeo o Instagram.
+                        </p>
+                        {extractYouTubeVideoId(pieceUrl) && (
+                          <div className="mt-1.5 flex items-center gap-2 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-950">
+                            <img
+                              src={`https://img.youtube.com/vi/${extractYouTubeVideoId(pieceUrl)}/hqdefault.jpg`}
+                              alt="Miniatura YouTube"
+                              className="h-10 w-14 shrink-0 rounded object-cover border border-red-200"
+                            />
+                            <div>
+                              <span className="font-semibold">Vídeo de YouTube detectado</span> (ID: {extractYouTubeVideoId(pieceUrl)})
+                              <p className="text-[10px] text-red-700">Se usará como reproductor y miniatura oficial en la web y catálogo.</p>
+                            </div>
+                          </div>
+                        )}
+                        {sourcePlatform === "tiktok" && !extractYouTubeVideoId(pieceUrl) && pieceUrl.includes("tiktok") && (
+                          <div className="mt-1.5 flex items-center gap-2 rounded-md border border-stone-300 bg-stone-100 p-2 text-xs text-stone-900">
+                            <Video className="size-4 text-stone-800 shrink-0" />
+                            <div>
+                              <span className="font-semibold">Vídeo / Cuenta de TikTok detectado</span>
+                              <p className="text-[10px] text-stone-600">Se vinculará como pieza de TikTok para difusión vertical en redes.</p>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 
