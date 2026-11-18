@@ -23,7 +23,15 @@ export function getFlamencoCrmUrl(): string {
 export const FLAMENCO_LANDING_URL = getFlamencoLandingUrl()
 export const FLAMENCO_CRM_URL = getFlamencoCrmUrl()
 
-export const FLAMENCO_DETAIL_MIME_TYPES = [".jpg", ".pdf", ".docx", ".mp3", ".mp4"] as const
+export const FLAMENCO_DETAIL_MIME_TYPES = [
+  ".jpg",
+  ".pdf",
+  ".docx",
+  ".mp3",
+  ".mp4",
+  "youtube",
+  "tiktok",
+] as const
 export type FlamencoDetailMimeType = (typeof FLAMENCO_DETAIL_MIME_TYPES)[number]
 
 export const FLAMENCO_DETAIL_MIME_LABELS: Record<FlamencoDetailMimeType, string> = {
@@ -32,6 +40,35 @@ export const FLAMENCO_DETAIL_MIME_LABELS: Record<FlamencoDetailMimeType, string>
   ".docx": "Documento Word (.docx)",
   ".mp3": "Audio (.mp3)",
   ".mp4": "Vídeo (.mp4)",
+  youtube: "Vídeo de YouTube",
+  tiktok: "Vídeo de TikTok",
+}
+
+export function detectDetailMimeFromPath(path: string | null | undefined): FlamencoDetailMimeType | null {
+  if (!path) return null
+  const trimmed = path.trim()
+  if (extractYouTubeVideoId(trimmed) || /youtube\.com|youtu\.be/i.test(trimmed)) {
+    return "youtube"
+  }
+  if (/tiktok\.com/i.test(trimmed)) {
+    return "tiktok"
+  }
+  if (/\.mp4($|\?)/i.test(trimmed)) {
+    return ".mp4"
+  }
+  if (/\.(jpg|jpeg|png|webp)($|\?)/i.test(trimmed)) {
+    return ".jpg"
+  }
+  if (/\.pdf($|\?)/i.test(trimmed)) {
+    return ".pdf"
+  }
+  if (/\.docx?($|\?)/i.test(trimmed)) {
+    return ".docx"
+  }
+  if (/\.mp3($|\?)/i.test(trimmed)) {
+    return ".mp3"
+  }
+  return null
 }
 
 export type ArtistDiscipline =

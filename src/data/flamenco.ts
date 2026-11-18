@@ -39,6 +39,7 @@ import {
 import {
   ARTIST_DIGITAL_PACK_PRESETS,
   buildConcertOfferTexts,
+  detectDetailMimeFromPath,
   detectMediaPlatformFromUrl,
   extractYouTubeVideoId,
   FLAMENCO_MEDIA_PIECES,
@@ -255,7 +256,9 @@ const createMediaAssetSchema = z.object({
 const createArtistWebMediaDetailSchema = z.object({
   artistId: z.string().uuid("Debes indicar un intérprete."),
   path: z.string().trim().min(1, "La ruta o enlace es obligatorio.").max(2000),
-  tipoMime: z.enum([".jpg", ".pdf", ".docx", ".mp3", ".mp4"]).default(".jpg"),
+  tipoMime: z
+    .enum([".jpg", ".pdf", ".docx", ".mp3", ".mp4", "youtube", "tiktok"])
+    .default(".jpg"),
   pertenecePack: z.boolean().default(false),
   textoMostrar: z.string().trim().max(10_000).default(""),
   tooltip: z.string().trim().max(10_000).default(""),
@@ -921,12 +924,18 @@ export async function generateFullMediaPackAction(
 export async function createArtistWebMediaDetail(actor: Actor, rawInput: unknown) {
   assertCan(actor, PERMISSIONS.campaigns.manage)
   const input = parseInput(createArtistWebMediaDetailSchema, rawInput)
+  const detectedMime = detectDetailMimeFromPath(input.path)
+  const effectiveMime =
+    input.tipoMime === ".jpg" && detectedMime
+      ? detectedMime
+      : input.tipoMime
+
   const [created] = await db
     .insert(artistWebMediaDetails)
     .values({
       artistId: input.artistId,
       path: input.path,
-      tipoMime: input.tipoMime,
+      tipoMime: effectiveMime,
       pertenecePack: input.pertenecePack,
       textoMostrar: input.textoMostrar,
       tooltip: input.tooltip,

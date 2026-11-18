@@ -564,10 +564,32 @@ describe("Agencia de Promoción Flamenca, Cal.com, Stripe y VAPI/Zadarma", () =>
     expect(detailMp4.textoMostrar).toContain("<p>Solo de bulerías en directo.")
     expect(detailMp4.tooltip).toContain("<li>Sonido máster 24bit</li>")
 
+    // Crear detalle con URL de YouTube y autodetección de tipo MIME
+    const detailYt = await createArtistWebMediaDetail(owner.actor, {
+      artistId: artist.id,
+      path: "https://www.youtube.com/watch?v=2FZZ-JbxFqw",
+      tipoMime: "youtube",
+      textoMostrar: "Vídeo Oficial Cuadro Flamenco YouTube",
+      visibleWeb: true,
+      orden: 3,
+    })
+    expect(detailYt.tipoMime).toBe("youtube")
+
+    // Crear detalle con autodetección desde la URL (pasando el default .jpg)
+    const detailAutoTiktok = await createArtistWebMediaDetail(owner.actor, {
+      artistId: artist.id,
+      path: "https://www.tiktok.com/@soniquete/video/7345678901234567890",
+      tipoMime: ".jpg",
+      textoMostrar: "Clip Vertical TikTok",
+      visibleWeb: true,
+      orden: 4,
+    })
+    expect(detailAutoTiktok.tipoMime).toBe("tiktok")
+
     // 3. Comprobar que getFlamencoHubSnapshot devuelve los detalles
     let snapshot = await getFlamencoHubSnapshot(viewer.actor)
     const artistDetails = snapshot.webMediaDetails.filter((d) => d.artistId === artist.id)
-    expect(artistDetails.length).toBe(2)
+    expect(artistDetails.length).toBe(4)
     expect(artistDetails[0].textoMostrar).toBe("Retrato escénico alta definición")
     expect(artistDetails[1].textoMostrar).toContain("<p>Solo de bulerías en directo.")
 
@@ -588,7 +610,7 @@ describe("Agencia de Promoción Flamenca, Cal.com, Stripe y VAPI/Zadarma", () =>
 
     snapshot = await getFlamencoHubSnapshot(viewer.actor)
     const remainingDetails = snapshot.webMediaDetails.filter((d) => d.artistId === artist.id)
-    expect(remainingDetails.length).toBe(1)
+    expect(remainingDetails.length).toBe(3)
     expect(remainingDetails[0].id).toBe(detailJpg.id)
 
     // 6. Autorización: viewer no puede crear detalles

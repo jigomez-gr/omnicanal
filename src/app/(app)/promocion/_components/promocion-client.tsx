@@ -59,6 +59,7 @@ import type { getFlamencoHubSnapshot } from "@/data/flamenco"
 import {
   ARTIST_DISCIPLINE_LABELS,
   CONCERT_STATUS_LABELS,
+  detectDetailMimeFromPath,
   detectMediaPlatformFromUrl,
   EVENT_KIND_LABELS,
   extractYouTubeVideoId,
@@ -1459,9 +1460,23 @@ export function PromocionClient({
                                     <div>
                                       <div className="flex items-center justify-between gap-1">
                                         <div className="flex flex-wrap items-center gap-1">
-                                          <Badge variant="outline" className="text-[10px] font-mono font-bold uppercase">
-                                            {detail.tipoMime}
-                                          </Badge>
+                                          {detail.tipoMime === "youtube" || extractYouTubeVideoId(detail.path) ? (
+                                            <Badge className="bg-red-100 text-red-800 border-red-200 text-[10px] font-medium">
+                                              YouTube
+                                            </Badge>
+                                          ) : detail.tipoMime === "tiktok" || detail.path.includes("tiktok") ? (
+                                            <Badge className="bg-stone-900 text-white border-stone-800 text-[10px] font-medium">
+                                              TikTok
+                                            </Badge>
+                                          ) : detail.tipoMime === ".mp4" ? (
+                                            <Badge className="bg-purple-100 text-purple-800 border-purple-200 text-[10px] font-medium">
+                                              Vídeo .MP4
+                                            </Badge>
+                                          ) : (
+                                            <Badge variant="outline" className="text-[10px] font-mono font-bold uppercase">
+                                              {detail.tipoMime}
+                                            </Badge>
+                                          )}
                                           {detail.pertenecePack && (
                                             <Badge className="bg-amber-100 text-amber-900 text-[10px]">
                                               En Pack
@@ -1511,6 +1526,25 @@ export function PromocionClient({
                                         </div>
                                       </div>
 
+                                      {extractYouTubeVideoId(detail.path) && (
+                                        <div className="mt-2 flex items-start gap-2.5">
+                                          <div className="relative h-12 w-20 shrink-0 overflow-hidden rounded border bg-stone-100 shadow-2xs">
+                                            <img
+                                              src={`https://img.youtube.com/vi/${extractYouTubeVideoId(detail.path)}/hqdefault.jpg`}
+                                              alt="Miniatura YouTube"
+                                              className="size-full object-cover"
+                                            />
+                                            <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                                              <PlayCircle className="size-4 text-white drop-shadow" />
+                                            </div>
+                                          </div>
+                                          <div className="min-w-0 flex-1">
+                                            <p className="font-semibold text-stone-900 line-clamp-1">{detail.textoMostrar || "Vídeo de YouTube"}</p>
+                                            <p className="truncate text-[11px] text-stone-500 font-mono">{detail.path}</p>
+                                          </div>
+                                        </div>
+                                      )}
+
                                       <div
                                         className="mt-2 text-xs font-semibold text-stone-900 prose prose-xs max-w-none break-words whitespace-pre-wrap"
                                         dangerouslySetInnerHTML={{
@@ -1542,9 +1576,16 @@ export function PromocionClient({
                                           href={detail.path}
                                           target="_blank"
                                           rel="noreferrer"
-                                          className="inline-flex items-center gap-1 text-sky-700 hover:underline"
+                                          className="inline-flex items-center gap-1 font-semibold text-sky-700 hover:underline"
                                         >
-                                          Abrir <ExternalLink className="size-3" />
+                                          <PlayCircle className="size-3.5" />
+                                          {detail.tipoMime === "youtube" || extractYouTubeVideoId(detail.path)
+                                            ? "Ver en YouTube"
+                                            : detail.tipoMime === "tiktok" || detail.path.includes("tiktok")
+                                              ? "Ver en TikTok"
+                                              : detail.tipoMime === ".mp4"
+                                                ? "Ver vídeo"
+                                                : "Abrir"}
                                         </a>
                                       )}
                                     </div>
@@ -2300,13 +2341,45 @@ export function PromocionClient({
                       </div>
 
                       <div>
-                        <Label className="text-xs">Ruta o URL del archivo (path) *</Label>
+                        <Label className="text-xs">Ruta o URL del archivo o vídeo (path) *</Label>
                         <Input
                           value={detailPath}
-                          onChange={(e) => setDetailPath(e.target.value)}
-                          placeholder="https://cdn.soniqueteflamenco.com/media/... o /var/data/..."
+                          onChange={(e) => {
+                            const val = e.target.value
+                            setDetailPath(val)
+                            const detected = detectDetailMimeFromPath(val)
+                            if (detected) {
+                              setDetailTipoMime(detected)
+                            }
+                          }}
+                          placeholder="https://www.youtube.com/watch?v=2FZZ-JbxFqw, https://www.tiktok.com/@..., o /media/..."
                           className="h-8 text-xs bg-white font-mono"
                         />
+                        <p className="mt-1 text-[11px] text-stone-500">
+                          Admite enlaces de YouTube (se detecta la miniatura e ID), TikTok, vídeos (.mp4), imágenes (.jpg), documentos (.pdf) o audios.
+                        </p>
+                        {extractYouTubeVideoId(detailPath) && (
+                          <div className="mt-1.5 flex items-center gap-2 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-950">
+                            <img
+                              src={`https://img.youtube.com/vi/${extractYouTubeVideoId(detailPath)}/hqdefault.jpg`}
+                              alt="Miniatura YouTube"
+                              className="h-10 w-14 shrink-0 rounded object-cover border border-red-200"
+                            />
+                            <div>
+                              <span className="font-semibold">Vídeo de YouTube detectado</span> (ID: {extractYouTubeVideoId(detailPath)})
+                              <p className="text-[10px] text-red-700">Se usará como reproductor embebido y miniatura oficial en la web.</p>
+                            </div>
+                          </div>
+                        )}
+                        {(detailTipoMime === "tiktok" || detailPath.includes("tiktok")) && !extractYouTubeVideoId(detailPath) && (
+                          <div className="mt-1.5 flex items-center gap-2 rounded-md border border-stone-300 bg-stone-100 p-2 text-xs text-stone-900">
+                            <Video className="size-4 text-stone-800 shrink-0" />
+                            <div>
+                              <span className="font-semibold">Vídeo / Enlace de TikTok detectado</span>
+                              <p className="text-[10px] text-stone-600">Se clasificará como material de TikTok para la web del artista.</p>
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       <div>
