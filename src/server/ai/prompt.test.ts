@@ -133,6 +133,64 @@ describe("business profile: data, hours and services [MOT-07]", () => {
     expect(business).toMatch(/No hay servicios configurados/);
     expect(business).toMatch(/No hay festivos ni cierres previstos/);
   });
+
+  it("formats rich service parameters from crm_salvadora into the agent prompt", () => {
+    const prompt = buildPrompt(
+      input({
+        services: [
+          {
+            name: "Hatha Yoga Terapéutico",
+            category: "Clases",
+            durationMin: 90,
+            price: null,
+            sinpreciodefinitivo: true,
+            textosinpreciodefinitivo: "A consultar según bono mensual",
+            serviceType: "recurring",
+            scheduleText: "Martes y Jueves (09:45, 11:15, 17:00, 18:30)",
+            maxPeople: 20,
+            allowedModalities: ["in_person", "virtual"],
+            requiresReason: true,
+            textoespecifico: "Traer esterilla propia si es posible.",
+            reminderNotes: "Llegar 10 min antes.",
+            videoUrl: "/videos/yoga.mp4",
+            flyerUrl: "/flyers/yoga.jpg",
+            descriptionForAgent: "Preguntar lesiones de espalda.",
+          },
+          {
+            name: "Retiro en la Naturaleza",
+            category: "Eventos",
+            durationMin: 180,
+            price: null,
+            serviceType: "event",
+            eventDatesText: "Del 20 al 23 de Noviembre",
+            sinfechadefinitiva: true,
+            textosinfechadefinitiva: "fechas provisionales",
+            minQuorum: 15,
+            maxPeople: 30,
+            paymentType: "external_url",
+            externalPaymentUrl: "https://www.giglon.com/retiro",
+            descriptionForAgent: null,
+          },
+        ],
+      }),
+    ).sections.find((s) => s.key === "business")?.content ?? "";
+
+    expect(prompt).toContain("Hatha Yoga Terapéutico (Clases)");
+    expect(prompt).toContain("Horarios oficiales: Martes y Jueves (09:45, 11:15, 17:00, 18:30)");
+    expect(prompt).toContain("Precio: A consultar según bono mensual");
+    expect(prompt).toContain("Aforo máx: 20 personas");
+    expect(prompt).toContain("Modalidades: Presencial, Virtual (videollamada)");
+    expect(prompt).toContain("[Requiere motivo o razón de la consulta]");
+    expect(prompt).toContain("INFORMACIÓN ESPECÍFICA ACTUALIZADA (COMUNICAR SIEMPRE AL CLIENTE): Traer esterilla propia si es posible.");
+    expect(prompt).toContain("Recomendaciones y recordatorio para el cliente: Llegar 10 min antes.");
+    expect(prompt).toContain("Vídeo de la actividad: /videos/yoga.mp4");
+    expect(prompt).toContain("Flyer de la actividad: /flyers/yoga.jpg");
+
+    expect(prompt).toContain("Retiro en la Naturaleza (Eventos) · Evento / Actividad puntual · Fechas: fechas provisionales");
+    expect(prompt).toContain("[SIN FECHA DEFINITIVA: se debe formalizar inmediatamente la reserva de plaza prioritaria]");
+    expect(prompt).toContain("Quórum mínimo: 15 personas");
+    expect(prompt).toContain("Venta de entradas / compra en: https://www.giglon.com/retiro");
+  });
 });
 
 describe("agent instructions [AGE-04]", () => {

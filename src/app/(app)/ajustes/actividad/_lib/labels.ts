@@ -96,6 +96,7 @@ const ACTION_LABELS: Record<string, string> = {
   "campaign.paused": "Pausó un envío",
   "campaign.resumed": "Reanudó un envío",
   "campaign.cancelled": "Canceló un envío",
+  "campaign.deleted": "Borró un envío",
   "campaign.finished": "Terminó un envío",
   "campaigns.settings_updated": "Cambió los ajustes de los envíos",
   "campaign_rule.created": "Creó un envío automático o repetido",

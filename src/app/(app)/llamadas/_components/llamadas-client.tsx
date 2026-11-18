@@ -6,7 +6,6 @@ import {
   Clock,
   Copy,
   DollarSign,
-  FileText,
   Headphones,
   MessageSquareText,
   Mic,

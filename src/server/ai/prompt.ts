@@ -29,7 +29,38 @@ export type PromptBusiness = {
 export type PromptHoursRange = { weekday: number; startMin: number; endMin: number };
 /** Local calendar dates YYYY-MM-DD, both ends included. */
 export type PromptClosure = { startDate: string; endDate: string; reason: string | null };
-export type PromptService = { name: string; category: string | null; durationMin: number; price: number | null; descriptionForAgent: string | null };
+export type PromptService = {
+  id?: string;
+  name: string;
+  category: string | null;
+  durationMin: number;
+  price: number | null;
+  descriptionForAgent: string | null;
+  serviceType?: string | null;
+  description?: string | null;
+  eventDatesText?: string | null;
+  scheduleText?: string | null;
+  flyerUrl?: string | null;
+  flyerParticularUrl?: string | null;
+  videoUrl?: string | null;
+  videoParticularUrl?: string | null;
+  textoespecifico?: string | null;
+  fechaDesde?: string | null;
+  fechaHasta?: string | null;
+  sinfechadefinitiva?: boolean | null;
+  textosinfechadefinitiva?: string | null;
+  sinpreciodefinitivo?: boolean | null;
+  textosinpreciodefinitivo?: string | null;
+  paymentType?: string | null;
+  externalPaymentUrl?: string | null;
+  allowedModalities?: readonly string[] | null;
+  requiresReason?: boolean | null;
+  reminderNotes?: string | null;
+  minPeople?: number | null;
+  maxPeople?: number | null;
+  minQuorum?: number | null;
+  requiresManualConfirmation?: boolean | null;
+};
 export type PromptAgent = { name: string; language: string; tone: string | null; instructions: AgentInstructions };
 export type PromptContextFile = { title: string; content: string };
 /** Only what the agent needs: the name, and which contact data exist (never their values). */
@@ -204,12 +235,92 @@ function closureLines(closures: readonly PromptClosure[], today: string, timezon
   });
 }
 
+const SERVICE_MODALITY_LABELS: Record<string, string> = {
+  in_person: "Presencial",
+  phone: "Telefónica",
+  virtual: "Virtual (videollamada)",
+  presencial: "Presencial",
+  telefonica: "Telefónica",
+};
+
 function serviceLines(services: readonly PromptService[]): string[] {
   if (services.length === 0) return ["No hay servicios configurados."];
   return services.map((service) => {
-    const parts = [`${service.name}${service.category ? ` (${service.category})` : ""}`, `${service.durationMin} min`];
-    if (service.price !== null) parts.push(`precio orientativo ${formatNumber(service.price, { style: "currency", currency: "EUR" })}`);
-    return `- ${parts.join(" · ")}${service.descriptionForAgent ? `: ${service.descriptionForAgent}` : ""}`;
+    const isEvent = service.serviceType === "event";
+    const title = `${service.name}${service.category ? ` (${service.category})` : ""}`;
+    const headParts: string[] = [title];
+
+    if (isEvent) {
+      headParts.push("Evento / Actividad puntual");
+      const dateStr = service.sinfechadefinitiva
+        ? service.textosinfechadefinitiva || "próximamente / fecha por confirmar"
+        : service.eventDatesText;
+      if (dateStr) headParts.push(`Fechas: ${dateStr}`);
+    } else {
+      headParts.push(`${service.durationMin} min`);
+      if (service.scheduleText) headParts.push(`Horarios oficiales: ${service.scheduleText}`);
+    }
+
+    if (service.sinpreciodefinitivo) {
+      headParts.push(
+        service.textosinpreciodefinitivo
+          ? `Precio: ${service.textosinpreciodefinitivo}`
+          : "Precio: por confirmar o según características",
+      );
+    } else if (service.price !== null) {
+      headParts.push(`precio orientativo ${formatNumber(service.price, { style: "currency", currency: "EUR" })}`);
+    }
+
+    if (service.maxPeople && service.maxPeople > 1) {
+      headParts.push(`Aforo máx: ${service.maxPeople} personas`);
+    }
+    if (service.minQuorum && service.minQuorum > 1) {
+      headParts.push(`Quórum mínimo: ${service.minQuorum} personas`);
+    }
+
+    if (service.sinfechadefinitiva) {
+      headParts.push("[SIN FECHA DEFINITIVA: se debe formalizar inmediatamente la reserva de plaza prioritaria]");
+    }
+
+    if (service.allowedModalities && service.allowedModalities.length > 0) {
+      const modalities = service.allowedModalities.map((m) => SERVICE_MODALITY_LABELS[m] ?? m).join(", ");
+      headParts.push(`Modalidades: ${modalities}`);
+    }
+
+    if (service.requiresReason) {
+      headParts.push("[Requiere motivo o razón de la consulta]");
+    }
+
+    if (service.paymentType === "external_url" && service.externalPaymentUrl) {
+      headParts.push(`Venta de entradas / compra en: ${service.externalPaymentUrl}`);
+    }
+
+    let line = `- ${headParts.join(" · ")}${service.descriptionForAgent ? `: ${service.descriptionForAgent}` : ""}`;
+
+    const extraLines: string[] = [];
+    if (service.textoespecifico?.trim()) {
+      extraLines.push(`  * INFORMACIÓN ESPECÍFICA ACTUALIZADA (COMUNICAR SIEMPRE AL CLIENTE): ${service.textoespecifico.trim()}`);
+    }
+    if (service.reminderNotes?.trim()) {
+      extraLines.push(`  * Recomendaciones y recordatorio para el cliente: ${service.reminderNotes.trim()}`);
+    }
+    if (service.description?.trim() && service.description.trim() !== service.descriptionForAgent?.trim()) {
+      extraLines.push(`  * Descripción y condiciones: ${service.description.trim()}`);
+    }
+    const video = service.videoParticularUrl || service.videoUrl;
+    if (video) {
+      extraLines.push(`  * Vídeo de la actividad: ${video}`);
+    }
+    const flyer = service.flyerParticularUrl || service.flyerUrl;
+    if (flyer) {
+      extraLines.push(`  * Flyer de la actividad: ${flyer}`);
+    }
+
+    if (extraLines.length > 0) {
+      line += `\n${extraLines.join("\n")}`;
+    }
+
+    return line;
   });
 }
 

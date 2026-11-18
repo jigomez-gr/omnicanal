@@ -569,6 +569,7 @@ Están todas explicadas en `.env.example`. En local no tienes que tocar ninguna:
 |---|---|
 | `DATABASE_URL` | Base de datos. Vacía en local: la base integrada, en `data/pglite`. Al publicar, la dirección del «Transaction pooler» de Supabase (puerto 6543), que lleva la contraseña: solo en las variables de Vercel (Sensitive), nunca en `.env.local`. |
 | `APP_URL`, `BETTER_AUTH_URL` | Dirección de la app, para los enlaces de los correos y el inicio de sesión. Con `APP_URL` se hacen también la dirección de avisos de WhatsApp (`https://<dominio>/api/webhooks/whatsapp`) y las de vuelta de Google y Microsoft: publicada, tiene que ser el dominio de producción con HTTPS (la versión compilada no arranca con `http://`, salvo `localhost` en tu ordenador). |
+| `FLAMENCO_LANDING_URL`, `FLAMENCO_CRM_URL` | Direcciones de la landing pública de artistas y del panel CRM de flamenco. |
 | `TRUSTED_PROXY_HOPS` | Opcional: cuántos proxies hay delante de la app (1 por defecto: Vercel o Traefik), para leer bien la IP de cada petición en los límites. |
 | `BETTER_AUTH_SECRET` | Firma las sesiones. |
 | `APP_ENCRYPTION_KEY` | Cifra las claves que el negocio pone en la app. **Guárdala aparte:** si se pierde, esas claves no se pueden leer. Sin ella la app no arranca. |

@@ -95,6 +95,94 @@ describe("services [AGD-04]", () => {
     expect((await getService(owner, created.id)).active).toBe(false);
   });
 
+  it("creates and edits a service with all crm_salvadora customization parameters", async () => {
+    const owner = users.owner.actor;
+    const fullService = await createService(owner, {
+      name: "Retiro de Yoga en la Sierra",
+      serviceType: "event",
+      durationMin: 120,
+      minPeople: 1,
+      maxPeople: 25,
+      minQuorum: 15,
+      eventDatesText: "Del 20 al 23 de Noviembre",
+      sinfechadefinitiva: true,
+      textosinfechadefinitiva: "fechas por confirmar",
+      sinpreciodefinitivo: true,
+      textosinpreciodefinitivo: "El precio se fijará según alojamiento.",
+      textoespecifico: "Llevar ropa de abrigo para las meditaciones al aire libre.",
+      description: "Retiro completo de fin de semana con meditación y yoga.",
+      descriptionForAgent: "Avisar que hay pensión completa incluida.",
+      flyerUrl: "/flyers/retiro.jpg",
+      videoUrl: "/videos/retiro.mp4",
+      paymentType: "external_url",
+      externalPaymentUrl: "https://www.giglon.com/retiro",
+      allowedModalities: ["in_person"],
+      calendarId: "cal-retiro",
+      reminderNotes: "Llegar 15 minutos antes.",
+      notifyByEmail: true,
+      notifyByWhatsapp: true,
+      notifyBySms: false,
+      notifyByTelegram: true,
+      reminderWhatsapp: true,
+      reminderEmail: true,
+      reminderVoice: true,
+      reminderSms: false,
+      reminderHoursEnabled: true,
+      reminderHours: 48,
+      reminderMinutesEnabled: true,
+      reminderMinutes: 180,
+      resourceIds: [hair.laura.id],
+    });
+
+    expect(fullService).toMatchObject({
+      name: "Retiro de Yoga en la Sierra",
+      serviceType: "event",
+      sinfechadefinitiva: true,
+      textosinfechadefinitiva: "fechas por confirmar",
+      sinpreciodefinitivo: true,
+      textosinpreciodefinitivo: "El precio se fijará según alojamiento.",
+      textoespecifico: "Llevar ropa de abrigo para las meditaciones al aire libre.",
+      minQuorum: 15,
+      calendarId: "cal-retiro",
+      reminderHours: 48,
+      reminderVoice: true,
+      paymentType: "external_url",
+      externalPaymentUrl: "https://www.giglon.com/retiro",
+    });
+
+    const updated = await updateService(owner, {
+      serviceId: fullService.id,
+      name: "Retiro de Yoga y Meditación",
+      serviceType: "event",
+      durationMin: 120,
+      minPeople: 1,
+      maxPeople: 30,
+      minQuorum: 20,
+      sinfechadefinitiva: false,
+      eventDatesText: "Del 10 al 12 de Diciembre",
+      price: 250,
+      sinpreciodefinitivo: false,
+      textoespecifico: "Actualizado: incluye esterilla de regalo.",
+      paymentType: "stripe",
+      allowedModalities: ["in_person", "virtual"],
+      calendarId: "cal-retiro-meditacion",
+      reminderHours: 24,
+      resourceIds: [hair.laura.id],
+    });
+
+    expect(updated).toMatchObject({
+      name: "Retiro de Yoga y Meditación",
+      minQuorum: 20,
+      sinfechadefinitiva: false,
+      sinpreciodefinitivo: false,
+      price: 250,
+      textoespecifico: "Actualizado: incluye esterilla de regalo.",
+      paymentType: "stripe",
+      calendarId: "cal-retiro-meditacion",
+      reminderHours: 24,
+    });
+  });
+
   it("refuse wrong values, with the error by the field [AJU-15]", async () => {
     const owner = users.owner.actor;
     await expect(createService(owner, { ...serviceInput, minPeople: 3, maxPeople: 2 })).rejects.toMatchObject({ fieldErrors: { maxPeople: expect.any(Array) } });

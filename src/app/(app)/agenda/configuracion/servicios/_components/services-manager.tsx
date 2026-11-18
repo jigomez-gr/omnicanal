@@ -84,6 +84,11 @@ export function ServicesManager({ services, resources, mode, words }: ServicesMa
                       <span className="flex flex-wrap items-center gap-2">
                         <span className="min-w-0 text-sm font-medium break-words">{service.name}</span>
                         {service.category ? <span className="text-xs text-muted-foreground">{service.category}</span> : null}
+                        {service.serviceType === "event" ? (
+                          <Badge variant="outline" className="border-purple-300 text-purple-700 bg-purple-50 dark:border-purple-800 dark:bg-purple-950/40 dark:text-purple-300">
+                            Evento / Retiro
+                          </Badge>
+                        ) : null}
                         {service.requiresManualConfirmation ? <Badge variant="outline">Confirmación manual</Badge> : null}
                         {service.active ? null : <Badge variant="secondary">Inactivo</Badge>}
                       </span>
@@ -130,7 +135,7 @@ export function ServicesManager({ services, resources, mode, words }: ServicesMa
       )}
 
       <Sheet open={editing !== null} onOpenChange={(open) => (open ? undefined : setEditing(null))}>
-        <SheetContent side="right" showCloseButton={false} className="w-full gap-0 overflow-y-auto sm:max-w-lg">
+        <SheetContent side="right" showCloseButton={false} className="w-full gap-0 overflow-y-auto sm:max-w-2xl">
           <SheetHeader className="flex-row items-start justify-between gap-2 border-b">
             <div className="flex min-w-0 flex-col gap-1">
               <SheetTitle>{editing === "new" || editing === null ? "Nuevo servicio" : editing.name}</SheetTitle>
