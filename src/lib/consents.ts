@@ -2,7 +2,7 @@
 // citas» and «Novedades y publicidad») and the bajas in force on each kind of channel (of everything, or of novedades y
 // publicidad only). The newest record of each family decides, by when it was recorded (never by when the customer
 // says they gave it, so an old date cannot undo a later baja). Pure: the server loads the rows, the screens show them.
-import type { ChannelKind, ConsentMethod, ConsentType, ContactPermission } from "./enums";
+import { CHANNEL_KINDS, type ChannelKind, type ConsentMethod, type ConsentType, type ContactPermission } from "./enums";
 
 export type ConsentRecord = {
   id: string;
@@ -28,7 +28,7 @@ export type ConsentState = {
   optOuts: Record<ChannelKind, OptOutState>;
 };
 
-const KINDS: ChannelKind[] = ["whatsapp", "email", "webchat", "telegram", "instagram"];
+const KINDS: readonly ChannelKind[] = CHANNEL_KINDS;
 const PERMISSION_TYPES: Record<ContactPermission, { granted: ConsentType; withdrawn: ConsentType }> = {
   reminders: { granted: "reminders_granted", withdrawn: "reminders_withdrawn" },
   marketing: { granted: "marketing_granted", withdrawn: "marketing_withdrawn" },
@@ -98,10 +98,10 @@ export type BlockReason = "opted_out" | "marketing_opted_out" | "no_reminders_pe
  * channel ([CTO-09], [WA-61]).
  */
 export function blockReason(state: ConsentState, kind: ChannelKind, purpose: SendPurpose): BlockReason | null {
-  if (state.optOuts[kind].all) return "opted_out";
+  if (state.optOuts[kind]?.all) return "opted_out";
   if (purpose === "reminder" && (kind === "whatsapp" || kind === "telegram") && !hasPermission(state, "reminders")) return "no_reminders_permission";
   if (purpose === "marketing") {
-    if (state.optOuts[kind].marketing) return "marketing_opted_out";
+    if (state.optOuts[kind]?.marketing) return "marketing_opted_out";
     if (!hasPermission(state, "marketing")) return "no_marketing_permission";
   }
   return null;
@@ -139,4 +139,4 @@ export const CHANNEL_KIND_LABELS: Record<ChannelKind, string> = {
 };
 
 /** The kinds a baja «para todos los canales» covers ([CTO-10]). */
-export const OPT_OUT_KINDS: ChannelKind[] = KINDS;
+export const OPT_OUT_KINDS: readonly ChannelKind[] = ["whatsapp", "email", "webchat", "telegram", "instagram"];
