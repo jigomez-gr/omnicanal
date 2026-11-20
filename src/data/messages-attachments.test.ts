@@ -3,7 +3,7 @@ import { detectAttachment } from "./messages";
 
 describe("detectAttachment", () => {
   it("detects PDF files by signature and extension", () => {
-    const pdfBytes = new Uint8Array([0x25, 0x50, 0x44, 0x2d, 0x31, 0x2e, 0x35]); // %PDF-1.5
+    const pdfBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x35]); // %PDF-1.5
     const result = detectAttachment(pdfBytes, "factura.pdf");
     expect(result).toEqual({ kind: "document", mimeType: "application/pdf" });
   });

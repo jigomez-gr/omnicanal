@@ -88,6 +88,40 @@ export function contactDisplayName(name: string | null | undefined): string {
   return name?.trim() || UNNAMED_CONTACT;
 }
 
+/** Formats the date prefix for a thread: «ddMMyyyy_HHmmss». */
+export function formatConversationDatePrefix(date: Date | string | number | null | undefined, timezone: string = DEFAULT_TIMEZONE): string {
+  if (!date) return "";
+  try {
+    return formatDateTime(date, timezone, { pattern: "ddMMyyyy_HHmmss" });
+  } catch {
+    return "";
+  }
+}
+
+/** Formats full date with day of the week in Spanish: «Viernes 30/10/2026 08:41:12». */
+export function formatConversationFullDate(date: Date | string | number | null | undefined, timezone: string = DEFAULT_TIMEZONE): string {
+  if (!date) return "";
+  try {
+    const day = formatDateTime(date, timezone, { pattern: "EEEE" });
+    const capitalizedDay = day ? day.charAt(0).toUpperCase() + day.slice(1) : "";
+    const datePart = formatDateTime(date, timezone, { pattern: "dd/MM/yyyy HH:mm:ss" });
+    return capitalizedDay ? `${capitalizedDay} ${datePart}` : datePart;
+  } catch {
+    return "";
+  }
+}
+
+/** Full display name of a conversation: «ddMMyyyy_HHmmss - Nombre del cliente». */
+export function conversationDisplayName(
+  name: string | null | undefined,
+  date: Date | string | number | null | undefined,
+  timezone: string = DEFAULT_TIMEZONE,
+): string {
+  const baseName = contactDisplayName(name);
+  const prefix = formatConversationDatePrefix(date, timezone);
+  return prefix ? `${prefix} - ${baseName}` : baseName;
+}
+
 /** What a message without text is, in the list and in the bubble. */
 export const CONTENT_TYPE_LABELS: Record<MessageContentType, string> = {
   text: "Mensaje",

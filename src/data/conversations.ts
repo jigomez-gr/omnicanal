@@ -3,7 +3,7 @@
 // see their channels ([PER-02]); «Probar agente» conversations never appear ([PRU-05]). Changes are in
 // conversation-actions.ts.
 import "server-only";
-import { aliasedTable, and, count, desc, eq, exists, gt, inArray, isNotNull, isNull, lt, lte, ne, or, type SQL } from "drizzle-orm";
+import { aliasedTable, and, count, desc, eq, exists, gt, gte, ilike, inArray, isNotNull, isNull, like, lt, lte, ne, or, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { agents, channels, contacts, conversations, handoffEvents, messages, user } from "@/db/schema";
@@ -17,7 +17,7 @@ import { parseInput } from "@/server/errors";
 import { listActiveTeam } from "@/server/team";
 import { eligibleAssignees, openHandoffOf } from "@/server/handoff/service";
 import { messageSearchCondition } from "@/server/inbound/message-search";
-import { descNullsLast, jsonTextContains } from "@/server/sql-helpers";
+import { containing, descNullsLast, jsonTextContains } from "@/server/sql-helpers";
 import { contactSearchCondition } from "./contacts-search";
 import { loadConversationFor } from "./conversation-scope";
 import { assertCan } from "./guard";
@@ -28,12 +28,16 @@ const DEFAULT_PAGE_SIZE = 30;
 export const conversationFiltersSchema = z
   .object({
     channelId: idSchema.optional(),
+    channelType: z.string().optional(),
     status: z.enum(CONVERSATION_STATUSES).optional(),
     /** «me», «unassigned» or a person's id. */
     assignee: z.union([z.literal("me"), z.literal("unassigned"), idSchema]).optional(),
     /** ai = the AI answers now; human = a person (AI off or hand-off); paused = AI paused for a while ([BAN-02]). */
     mode: z.enum(["ai", "human", "paused"]).optional(),
     unread: z.boolean().optional(),
+    period: z.enum(["all", "today", "7d", "30d"]).optional(),
+    readState: z.enum(["all", "unread", "read"]).optional(),
+    searchField: z.enum(["all", "phone", "email", "name"]).optional(),
     /** Any of these labels. */
     labels: z.array(labelSchema).max(MAX_LABELS).optional(),
     /** Contact name, phone or email, or message text. */
@@ -65,6 +69,7 @@ export type ConversationListItem = {
   labels: string[];
   unreadCount: number;
   lastMessageAt: Date | null;
+  createdAt: Date;
   lastMessage: { preview: string | null; contentType: MessageContentType; direction: "inbound" | "outbound"; senderType: SenderType; createdAt: Date } | null;
   /** Open urgent hand-off: highlighted in the list ([TRA-07]). */
   urgent: boolean;
@@ -117,14 +122,39 @@ export async function listConversations(actor: Actor, input: unknown = {}): Prom
   const now = new Date();
   const conditions: SQL[] = [...scope];
   if (filters.channelId) conditions.push(eq(conversations.channelId, filters.channelId));
+  if (filters.channelType && filters.channelType !== "all") conditions.push(eq(channels.type, filters.channelType as ChannelType));
   if (filters.status) conditions.push(eq(conversations.status, filters.status));
   if (filters.assignee === "me") conditions.push(eq(conversations.assignedUserId, actor.userId));
   else if (filters.assignee === "unassigned") conditions.push(isNull(conversations.assignedUserId));
   else if (filters.assignee) conditions.push(eq(conversations.assignedUserId, filters.assignee));
   if (filters.mode) conditions.push(modeCondition(filters.mode, now) as SQL);
-  if (filters.unread) conditions.push(gt(conversations.unreadCount, 0));
+  if (filters.unread || filters.readState === "unread") conditions.push(gt(conversations.unreadCount, 0));
+  else if (filters.readState === "read") conditions.push(eq(conversations.unreadCount, 0));
+  if (filters.period && filters.period !== "all") {
+    if (filters.period === "today") {
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      conditions.push(or(gte(conversations.lastMessageAt, startOfToday), gte(conversations.createdAt, startOfToday)) as SQL);
+    } else if (filters.period === "7d") {
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      conditions.push(or(gte(conversations.lastMessageAt, sevenDaysAgo), gte(conversations.createdAt, sevenDaysAgo)) as SQL);
+    } else if (filters.period === "30d") {
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      conditions.push(or(gte(conversations.lastMessageAt, thirtyDaysAgo), gte(conversations.createdAt, thirtyDaysAgo)) as SQL);
+    }
+  }
   if (filters.labels?.length) conditions.push(or(...filters.labels.map(hasLabel)) as SQL);
-  if (filters.search) conditions.push(searchCondition(filters.search) as SQL);
+  if (filters.search) {
+    if (filters.searchField === "name") {
+      conditions.push(ilike(contacts.name, containing(filters.search)));
+    } else if (filters.searchField === "phone") {
+      const digits = filters.search.replace(/\D/g, "");
+      conditions.push(or(ilike(contacts.phone, containing(filters.search)), ...(digits ? [like(contacts.phone, containing(digits))] : [])) as SQL);
+    } else if (filters.searchField === "email") {
+      conditions.push(ilike(contacts.email, containing(filters.search)));
+    } else {
+      conditions.push(searchCondition(filters.search) as SQL);
+    }
+  }
   if (filters.cursor) {
     const [at, id] = [Number(filters.cursor.slice(0, filters.cursor.indexOf(":"))), filters.cursor.slice(filters.cursor.indexOf(":") + 1)];
     const atDate = new Date(at);
@@ -148,6 +178,7 @@ export async function listConversations(actor: Actor, input: unknown = {}): Prom
       labels: conversations.labels,
       unreadCount: conversations.unreadCount,
       lastMessageAt: conversations.lastMessageAt,
+      createdAt: conversations.createdAt,
     })
     .from(conversations)
     .innerJoin(channels, eq(channels.id, conversations.channelId))
@@ -199,6 +230,7 @@ export async function listConversations(actor: Actor, input: unknown = {}): Prom
       labels: row.labels,
       unreadCount: row.unreadCount,
       lastMessageAt: row.lastMessageAt,
+      createdAt: row.createdAt,
       lastMessage: last
         ? {
             text: last.text,

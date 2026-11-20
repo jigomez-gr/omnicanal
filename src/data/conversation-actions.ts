@@ -221,6 +221,17 @@ export async function markConversationRead(actor: Actor, conversationId: string)
   return true;
 }
 
+/**
+ * Marks a conversation as unread so another teammate can attend to it.
+ */
+export async function markConversationUnread(actor: Actor, conversationId: string): Promise<boolean> {
+  const conversation = await loadConversationFor(actor, PERMISSIONS.inbox.view, conversationId);
+  if (!can(actor, PERMISSIONS.inbox.reply, { channelId: conversation.channelId }) || conversation.unreadCount > 0) return false;
+  await db.update(conversations).set({ unreadCount: 1, updatedAt: new Date() }).where(eq(conversations.id, conversation.id));
+  await changed(conversation, "read");
+  return true;
+}
+
 export const setConversationAgentSchema = z.object({ conversationId: idSchema, agentId: idSchema.nullable() }).strict();
 
 /** Another agent only for this conversation; from its next reply on ([AGE-14]). null = the channel's again. */

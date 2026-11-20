@@ -11,6 +11,7 @@ import {
   handOffConversation,
   handOffConversationSchema,
   markConversationRead,
+  markConversationUnread,
   setConversationAgent,
   setConversationAgentSchema,
   setConversationAi,
@@ -21,7 +22,7 @@ import {
   setConversationStatusSchema,
   takeConversation,
 } from "@/data/conversation-actions";
-import { conversationFiltersSchema, getInboxCounts, listConversations, type ConversationPage, type InboxCounts } from "@/data/conversations";
+import { conversationFiltersSchema, getConversation, getInboxCounts, listConversations, type ConversationPage, type InboxCounts } from "@/data/conversations";
 import { listMessageSources, type MessageSourcesByMessage } from "@/data/message-sources";
 import {
   approveDraft,
@@ -256,4 +257,145 @@ export async function setAgentAction(input: unknown): Promise<ActionResult> {
     await setConversationAgent(actor, parsed.data);
     return ok();
   });
+}
+
+/** Mark a conversation read or unread */
+export async function markConversationReadAction(input: unknown): Promise<ActionResult> {
+  return change(PERMISSIONS.inbox.reply, async (actor) => {
+    const parsed = conversationIdSchema.safeParse(input);
+    if (!parsed.success) return fail(NOT_FOUND);
+    await markConversationRead(actor, parsed.data.conversationId);
+    return ok();
+  });
+}
+
+export async function markConversationUnreadAction(input: unknown): Promise<ActionResult> {
+  return change(PERMISSIONS.inbox.reply, async (actor) => {
+    const parsed = conversationIdSchema.safeParse(input);
+    if (!parsed.success) return fail(NOT_FOUND);
+    await markConversationUnread(actor, parsed.data.conversationId);
+    return ok();
+  });
+}
+
+export type ExportFileResult = {
+  fileName: string;
+  base64: string;
+  contentType: string;
+};
+
+const exportListSchema = z.object({
+  format: z.enum(["xlsx", "csv", "pdf"]),
+  filters: conversationFiltersSchema.optional(),
+  filterInfo: z.string().optional(),
+});
+
+export async function exportConversationListAction(input: unknown): Promise<ActionResult<ExportFileResult>> {
+  try {
+    const actor = await requirePermission(PERMISSIONS.inbox.view);
+    const parsed = exportListSchema.safeParse(input);
+    if (!parsed.success) return fromZodError(parsed.error, "Parámetros de exportación inválidos.");
+
+    const page = await listConversations(actor, { ...(parsed.data.filters ?? {}), limit: 100 });
+    const items = page.items;
+    const nowStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const baseName = `Listado_Conversaciones_${nowStr}`;
+
+    const {
+      generateConversationListCsv,
+      generateConversationListPdf,
+      generateConversationListXlsx,
+    } = await import("@/server/conversations/export");
+
+    if (parsed.data.format === "csv") {
+      const csv = generateConversationListCsv(items, parsed.data.filterInfo);
+      return ok({
+        fileName: `${baseName}.csv`,
+        base64: Buffer.from(csv, "utf-8").toString("base64"),
+        contentType: "text/csv;charset=utf-8",
+      });
+    }
+
+    if (parsed.data.format === "xlsx") {
+      const bytes = generateConversationListXlsx(items, parsed.data.filterInfo);
+      return ok({
+        fileName: `${baseName}.xlsx`,
+        base64: Buffer.from(bytes).toString("base64"),
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+    }
+
+    const pdfBuf = await generateConversationListPdf(items, parsed.data.filterInfo);
+    return ok({
+      fileName: `${baseName}.pdf`,
+      base64: pdfBuf.toString("base64"),
+      contentType: "application/pdf",
+    });
+  } catch (error) {
+    return toActionFailure(error);
+  }
+}
+
+const exportConversationSchema = z.object({
+  conversationId: idSchema,
+  format: z.enum(["xlsx", "csv", "pdf", "zip"]),
+});
+
+export async function exportConversationAction(input: unknown): Promise<ActionResult<ExportFileResult>> {
+  try {
+    const actor = await requirePermission(PERMISSIONS.inbox.view);
+    const parsed = exportConversationSchema.safeParse(input);
+    if (!parsed.success) return fromZodError(parsed.error, "Parámetros de exportación inválidos.");
+
+    const conversation = await getConversation(actor, parsed.data.conversationId);
+    const { items: messages } = await listMessages(actor, { conversationId: parsed.data.conversationId, limit: 200 });
+
+    const {
+      cleanSafeFilename,
+      generateConversationCsv,
+      generateConversationPdf,
+      generateConversationXlsx,
+      generateConversationZip,
+    } = await import("@/server/conversations/export");
+
+    const contactName = cleanSafeFilename(conversation.contact?.name || "Conversacion");
+    const nowStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const baseName = `Conversacion_${contactName}_${nowStr}`;
+
+    if (parsed.data.format === "csv") {
+      const csv = generateConversationCsv(conversation, messages);
+      return ok({
+        fileName: `${baseName}.csv`,
+        base64: Buffer.from(csv, "utf-8").toString("base64"),
+        contentType: "text/csv;charset=utf-8",
+      });
+    }
+
+    if (parsed.data.format === "xlsx") {
+      const bytes = generateConversationXlsx(conversation, messages);
+      return ok({
+        fileName: `${baseName}.xlsx`,
+        base64: Buffer.from(bytes).toString("base64"),
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+    }
+
+    if (parsed.data.format === "pdf") {
+      const pdfBuf = await generateConversationPdf(conversation, messages);
+      return ok({
+        fileName: `${baseName}.pdf`,
+        base64: pdfBuf.toString("base64"),
+        contentType: "application/pdf",
+      });
+    }
+
+    const zipBytes = await generateConversationZip(conversation, messages, baseName);
+    return ok({
+      fileName: `${baseName}.zip`,
+      base64: Buffer.from(zipBytes).toString("base64"),
+      contentType: "application/zip",
+    });
+  } catch (error) {
+    return toActionFailure(error);
+  }
 }

@@ -12,10 +12,14 @@ describe("inbox filters in the URL [BAN-02]", () => {
     expect(query).toEqual({
       view: "pending",
       channelId: CHANNEL,
+      channelType: null,
       status: "resolved",
       assignee: "unassigned",
       mode: "paused",
       unread: true,
+      period: "all",
+      readState: "all",
+      searchField: "all",
       labels: ["vip", "cita"],
       search: "ana",
     });
@@ -39,6 +43,20 @@ describe("inbox filters in the URL [BAN-02]", () => {
     expect(inboxQueryString(EMPTY_QUERY)).toBe("");
     expect(inboxHref("/bandeja", EMPTY_QUERY)).toBe("/bandeja");
     expect(inboxHref(`/bandeja/${CHANNEL}`, query)).toBe(`/bandeja/${CHANNEL}?${text}`);
+  });
+
+  it("reads and parses period, readState, searchField, and channelType", () => {
+    const query = parseInboxQuery(params("periodo=7dias&leido=leidas&campo=movil&tipo_canal=whatsapp"));
+    expect(query.period).toBe("7d");
+    expect(query.readState).toBe("read");
+    expect(query.searchField).toBe("phone");
+    expect(query.channelType).toBe("whatsapp");
+    expect(toConversationFilters(query)).toEqual({
+      period: "7d",
+      readState: "read",
+      searchField: "phone",
+      channelType: "whatsapp",
+    });
   });
 
   it("the quick tabs «Pendientes de humano» and «Mías» win over the same filter", () => {

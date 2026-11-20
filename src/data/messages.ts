@@ -239,34 +239,21 @@ export type DetectedAttachment = {
 export function detectAttachment(bytes: Uint8Array, fileName?: string | null): DetectedAttachment | null {
   const name = (fileName ?? "").toLowerCase().trim();
 
+  // Reject executable binaries outright regardless of name
+  if (bytes.length >= 2 && bytes[0] === 0x4d && bytes[1] === 0x5a) return null; // MZ
+  if (bytes.length >= 4 && bytes[0] === 0x7f && bytes[1] === 0x45 && bytes[2] === 0x4c && bytes[3] === 0x46) return null; // ELF
+
   // 1. Image
   const image = detectLogoFormat(bytes);
   if (image) return { kind: "image", mimeType: image.contentType };
 
-  // 2. PDF
+  // 2. PDF (strictly requires %PDF- signature)
   if (bytes.length >= PDF_SIGNATURE.length && PDF_SIGNATURE.every((value, index) => bytes[index] === value)) {
     return { kind: "document", mimeType: "application/pdf" };
   }
-  if (name.endsWith(".pdf")) return { kind: "document", mimeType: "application/pdf" };
 
-  // 3. Video (MP4)
-  if (name.endsWith(".mp4")) {
-    return { kind: "video", mimeType: "video/mp4" };
-  }
-
-  // 4. Audio (MP3 / WAV / OGG / etc.)
-  const audioMime = detectAudioMimeType(bytes);
-  if (name.endsWith(".mp3") || (audioMime && audioMime !== "audio/mp4")) {
-    return { kind: "audio", mimeType: name.endsWith(".mp3") ? "audio/mpeg" : (audioMime ?? "audio/mpeg") };
-  }
-  if (audioMime === "audio/mp4") {
-    // MP4 container without explicit audio name defaults to video
-    return { kind: "video", mimeType: "video/mp4" };
-  }
-
-  // 5. Office OpenXML (.xlsx, .docx) & ZIP
-  const isZip = (bytes.length >= ZIP_SIGNATURE.length && ZIP_SIGNATURE.every((v, i) => bytes[i] === v)) ||
-    name.endsWith(".zip") || name.endsWith(".xlsx") || name.endsWith(".docx");
+  // 3. Office OpenXML (.xlsx, .docx) & ZIP (strictly requires PK.. signature)
+  const isZip = bytes.length >= ZIP_SIGNATURE.length && ZIP_SIGNATURE.every((v, i) => bytes[i] === v);
   if (isZip) {
     if (name.endsWith(".xlsx")) {
       return { kind: "document", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" };
@@ -275,6 +262,21 @@ export function detectAttachment(bytes: Uint8Array, fileName?: string | null): D
       return { kind: "document", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" };
     }
     return { kind: "document", mimeType: "application/zip" };
+  }
+
+  // 4. Video (MP4)
+  const isMp4 = bytes.length >= 8 && bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70;
+  if (isMp4 || name.endsWith(".mp4")) {
+    return { kind: "video", mimeType: "video/mp4" };
+  }
+
+  // 5. Audio (MP3 / WAV / OGG / etc.)
+  const audioMime = detectAudioMimeType(bytes);
+  if (name.endsWith(".mp3") || (audioMime && audioMime !== "audio/mp4")) {
+    return { kind: "audio", mimeType: name.endsWith(".mp3") ? "audio/mpeg" : (audioMime ?? "audio/mpeg") };
+  }
+  if (audioMime === "audio/mp4") {
+    return { kind: "video", mimeType: "video/mp4" };
   }
 
   // 6. CSV

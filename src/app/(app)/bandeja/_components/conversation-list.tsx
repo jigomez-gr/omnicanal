@@ -1,6 +1,6 @@
 "use client";
 
-import { FlaskConical, Inbox, LoaderCircle, RadioTower, Search, WifiOff } from "lucide-react";
+import { Download, FileSpreadsheet, FileText, FlaskConical, Inbox, LoaderCircle, RadioTower, RefreshCw, Search, WifiOff, X } from "lucide-react";
 import Link from "next/link";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -9,11 +9,12 @@ import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { ConversationListItem, InboxCounts } from "@/data/conversations";
 import { useRealtime, useRealtimeStatus, type RealtimeEvent } from "@/hooks/use-realtime";
 import { formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { loadInboxAction } from "../actions";
+import { exportConversationListAction, loadInboxAction } from "../actions";
 import {
   activeFilterCount,
   clearFilters,
@@ -21,13 +22,33 @@ import {
   inboxQueryString,
   parseInboxQuery,
   toConversationFilters,
+  type InboxPeriod,
   type InboxQuery,
+  type InboxReadState,
+  type InboxSearchField,
   type InboxView,
 } from "../_lib/filters";
 import { ConversationRow } from "./conversation-row";
 import { InboxFilters, type InboxChannel } from "./inbox-filters";
 import { ListSkeleton } from "./list-skeleton";
 import { useNow } from "./use-now";
+
+function triggerDownload(base64: string, fileName: string, contentType: string) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  const blob = new Blob([bytes], { type: contentType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 const INBOX_PATH = "/bandeja";
 const PAGE_SIZE = 30;
@@ -74,6 +95,10 @@ export function ConversationList({ channels, timezone, initialNow, canConnectCha
   const [failedKey, setFailedKey] = useState<string | null>(null);
   const [retries, setRetries] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState<string | null>(null);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+
   /** The first page of the current filters: an answer for older filters is dropped. */
   const request = useRef(0);
   /** Reloads of what is shown, counted apart: a reload never cancels the first page of new filters. */
@@ -123,6 +148,64 @@ export function ConversationList({ channels, timezone, initialNow, canConnectCha
       );
     }, RELOAD_DELAY_MS);
   }, [key, filters]);
+
+  const handleManualRefresh = () => {
+    setRefreshing(true);
+    const shown = current.current;
+    const limit = Math.min(MAX_PAGE, Math.max(PAGE_SIZE, shown?.items.length ?? PAGE_SIZE));
+    loadInboxAction({ ...filters, limit }).then(
+      (result) => {
+        setRefreshing(false);
+        if (result.ok && result.data) {
+          setLoaded({ key, items: result.data.page.items, nextCursor: result.data.page.nextCursor, counts: result.data.counts });
+          toast.success("Bandeja actualizada");
+        } else {
+          toast.error("No se pudo actualizar");
+        }
+      },
+      () => {
+        setRefreshing(false);
+        toast.error("No se pudo actualizar");
+      },
+    );
+  };
+
+  const handleListExport = async (format: "xlsx" | "csv" | "pdf") => {
+    if (exportingFormat) return;
+    setExportingFormat(format);
+    setShowExportMenu(false);
+    try {
+      const filterSummary = [
+        query.period !== "all" ? `Periodo: ${query.period}` : null,
+        query.readState !== "all" ? `Estado: ${query.readState}` : null,
+        query.channelType ? `Canal: ${query.channelType}` : null,
+        query.search ? `Búsqueda: ${query.search}` : null,
+      ]
+        .filter(Boolean)
+        .join(" | ");
+
+      const res = await exportConversationListAction({
+        format,
+        filters,
+        filterInfo: filterSummary || "Todas las conversaciones",
+      });
+
+      if (!res.ok) {
+        toast.error(res.error || "Error al exportar la lista.");
+        return;
+      }
+
+      if (res.data) {
+        triggerDownload(res.data.base64, res.data.fileName, res.data.contentType);
+        toast.success(`Listado ${format.toUpperCase()} descargado con éxito.`);
+      }
+    } catch {
+      toast.error("Error al exportar el listado.");
+    } finally {
+      setExportingFormat(null);
+    }
+  };
+
   // New filters (or leaving): a reload still waiting for the old ones is dropped.
   useEffect(
     () => () => {
@@ -164,17 +247,179 @@ export function ConversationList({ channels, timezone, initialNow, canConnectCha
   // One H1 per page: the conversation has its own when one is open.
   const Heading = selectedId ? "h2" : "h1";
 
+  // Channel types available in this installation
+  const channelTypes = useMemo(() => {
+    const types = new Set<string>();
+    for (const ch of channels) {
+      if (ch.type) types.add(ch.type);
+    }
+    return Array.from(types);
+  }, [channels]);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-col gap-3 border-b px-4 pt-4 pb-3">
-        <div className="flex items-baseline justify-between gap-2">
-          <Heading className="text-lg font-semibold tracking-tight">Bandeja</Heading>
-          {view && view.counts.unreadConversations > 0 ? (
-            <span className="text-xs text-muted-foreground tabular-nums">{formatNumber(view.counts.unreadConversations)} sin leer</span>
-          ) : null}
+      <div className="flex flex-col gap-2.5 border-b px-4 pt-3.5 pb-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-baseline gap-2">
+            <Heading className="text-base font-semibold tracking-tight">Conversaciones</Heading>
+            {view ? (
+              <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground tabular-nums">
+                {view.items.length}
+              </span>
+            ) : null}
+            {view && view.counts.unreadConversations > 0 ? (
+              <span className="text-xs font-semibold text-primary tabular-nums">
+                ({formatNumber(view.counts.unreadConversations)} sin leer)
+              </span>
+            ) : null}
+          </div>
+
+          {/* Export button */}
+          <Popover open={showExportMenu} onOpenChange={setShowExportMenu}>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={Boolean(exportingFormat)}
+                title="Exportar listado según los filtros actuales"
+                className="gap-1.5 text-xs h-8"
+              >
+                {exportingFormat ? (
+                  <LoaderCircle className="size-3.5 animate-spin" />
+                ) : (
+                  <Download className="size-3.5" />
+                )}
+                <span>Exportar</span>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-52 p-1.5">
+              <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">Exportar resultado</div>
+              <button
+                type="button"
+                onClick={() => handleListExport("xlsx")}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-foreground hover:bg-accent"
+              >
+                <FileSpreadsheet className="size-4 text-emerald-600" />
+                <div>
+                  <div className="font-medium">Excel (.xlsx)</div>
+                  <div className="text-[10px] text-muted-foreground">Listado con formato</div>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleListExport("csv")}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-foreground hover:bg-accent"
+              >
+                <FileText className="size-4 text-sky-600" />
+                <div>
+                  <div className="font-medium">CSV (.csv)</div>
+                  <div className="text-[10px] text-muted-foreground">Datos tabulares</div>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleListExport("pdf")}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-foreground hover:bg-accent"
+              >
+                <FileText className="size-4 text-rose-600" />
+                <div>
+                  <div className="font-medium">PDF (.pdf)</div>
+                  <div className="text-[10px] text-muted-foreground">Informe para imprimir</div>
+                </div>
+              </button>
+            </PopoverContent>
+          </Popover>
         </div>
-        <SearchBox query={query} onSearch={(search) => navigate({ ...query, search })} />
-        <nav aria-label="Vistas de la bandeja" className="-mb-3 flex gap-1 overflow-x-auto">
+
+        {/* Search bar with Re-execute button and Scope selector */}
+        <SearchBox
+          query={query}
+          refreshing={refreshing}
+          onSearch={(search) => navigate({ ...query, search })}
+          onRefresh={handleManualRefresh}
+          onSearchFieldChange={(searchField) => navigate({ ...query, searchField })}
+        />
+
+        {/* Quick parameters: Periodo y Estado */}
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div>
+            <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+              Periodo
+            </label>
+            <select
+              value={query.period}
+              onChange={(e) => navigate({ ...query, period: e.target.value as InboxPeriod })}
+              className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground focus:border-primary focus:outline-none"
+            >
+              <option value="all">Todas las fechas</option>
+              <option value="today">Hoy</option>
+              <option value="7d">Últimos 7 días</option>
+              <option value="30d">Últimos 30 días</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+              Estado
+            </label>
+            <select
+              value={query.readState}
+              onChange={(e) => {
+                const next = e.target.value as InboxReadState;
+                navigate({ ...query, readState: next, unread: next === "unread" });
+              }}
+              className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground focus:border-primary focus:outline-none"
+            >
+              <option value="all">Todas</option>
+              <option value="unread">Sin leer</option>
+              <option value="read">Leídas</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Quick channel pills */}
+        <div>
+          <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            Canal
+          </label>
+          <div className="flex flex-wrap gap-1">
+            <button
+              type="button"
+              onClick={() => navigate({ ...query, channelType: null, channelId: null })}
+              className={cn(
+                "rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors",
+                !query.channelType && !query.channelId
+                  ? "border-primary bg-primary-soft text-primary font-semibold"
+                  : "border-border bg-background text-muted-foreground hover:bg-muted",
+              )}
+            >
+              Todas
+            </button>
+            {channelTypes.map((type) => {
+              const label =
+                type === "whatsapp" ? "WhatsApp" : type === "email" ? "Email" : type === "web_chat" ? "Web Landing" : type === "instagram" ? "Instagram" : type;
+              const active = query.channelType === type;
+              return (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => navigate({ ...query, channelType: active ? null : type, channelId: null })}
+                  className={cn(
+                    "rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors",
+                    active
+                      ? "border-primary bg-primary-soft text-primary font-semibold"
+                      : "border-border bg-background text-muted-foreground hover:bg-muted",
+                  )}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Quick tabs (Todas, Pendientes de humano, Mías) */}
+        <nav aria-label="Vistas de la bandeja" className="-mb-2 flex gap-1 overflow-x-auto pt-1">
           {TABS.map((tab) => {
             const active = query.view === tab.view;
             const count = tab.count && view ? view.counts[tab.count] : 0;
@@ -186,12 +431,12 @@ export function ConversationList({ channels, timezone, initialNow, canConnectCha
                 scroll={false}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "flex h-9 shrink-0 items-center gap-1.5 border-b-2 px-2 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:h-11",
-                  active ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
+                  "flex h-8 shrink-0 items-center gap-1.5 border-b-2 px-2 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:h-10",
+                  active ? "border-primary text-foreground font-semibold" : "border-transparent text-muted-foreground hover:text-foreground",
                 )}
               >
                 {tab.label}
-                {count > 0 ? <span className="rounded-full bg-muted px-1.5 text-xs text-foreground tabular-nums">{formatNumber(count)}</span> : null}
+                {count > 0 ? <span className="rounded-full bg-muted px-1.5 text-[10px] text-foreground tabular-nums">{formatNumber(count)}</span> : null}
               </Link>
             );
           })}
@@ -261,11 +506,23 @@ export function ConversationList({ channels, timezone, initialNow, canConnectCha
   );
 }
 
-/** Search by contact or text; typing waits a moment before asking, and the URL keeps it. */
-function SearchBox({ query, onSearch }: { query: InboxQuery; onSearch: (search: string) => void }) {
+/** Search by contact or text with field selector and re-execute button. */
+function SearchBox({
+  query,
+  refreshing,
+  onSearch,
+  onRefresh,
+  onSearchFieldChange,
+}: {
+  query: InboxQuery;
+  refreshing: boolean;
+  onSearch: (search: string) => void;
+  onRefresh: () => void;
+  onSearchFieldChange: (field: InboxSearchField) => void;
+}) {
   const [text, setText] = useState(query.search);
   const [urlSearch, setUrlSearch] = useState(query.search);
-  // «Atrás» or a link changed the search: show it (unless it is what is being typed).
+
   if (query.search !== urlSearch) {
     setUrlSearch(query.search);
     if (query.search !== text.trim()) setText(query.search);
@@ -281,18 +538,84 @@ function SearchBox({ query, onSearch }: { query: InboxQuery; onSearch: (search: 
     return () => window.clearTimeout(id);
   }, [text, urlSearch]);
 
+  const placeholder =
+    query.searchField === "phone"
+      ? "Buscar por teléfono..."
+      : query.searchField === "email"
+        ? "Buscar por email..."
+        : query.searchField === "name"
+          ? "Buscar por nombre..."
+          : "Buscar por móvil, email, nombre o mensaje...";
+
   return (
-    <div className="relative">
-      <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-      <Input
-        type="search"
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-        placeholder="Buscar por contacto o texto"
-        aria-label="Buscar conversaciones"
-        maxLength={100}
-        className="pl-8"
-      />
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-1.5">
+        <div className="relative min-w-0 flex-1">
+          <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="search"
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            placeholder={placeholder}
+            aria-label="Buscar conversaciones"
+            maxLength={100}
+            className="pl-8 pr-7 h-8 text-xs"
+          />
+          {text ? (
+            <button
+              type="button"
+              onClick={() => {
+                setText("");
+                onSearch("");
+              }}
+              title="Borrar búsqueda"
+              aria-label="Borrar búsqueda"
+              className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="size-3.5" />
+            </button>
+          ) : null}
+        </div>
+        <Button
+          type="button"
+          variant="default"
+          size="sm"
+          onClick={onRefresh}
+          disabled={refreshing}
+          title="Reejecutar búsqueda y refrescar lista"
+          className="h-8 gap-1 px-2.5 text-xs font-semibold shrink-0"
+        >
+          <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
+          <span>Reejecutar</span>
+        </Button>
+      </div>
+
+      {/* Scope selector */}
+      <div className="flex items-center gap-1 text-[11px]">
+        <span className="text-muted-foreground text-[10px] mr-0.5">Buscar en:</span>
+        {(
+          [
+            { id: "all", label: "Todos" },
+            { id: "phone", label: "Móvil" },
+            { id: "email", label: "Email" },
+            { id: "name", label: "Nombre" },
+          ] as const
+        ).map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            onClick={() => onSearchFieldChange(f.id)}
+            className={cn(
+              "rounded px-1.5 py-0.5 font-medium transition-colors text-[10px]",
+              query.searchField === f.id
+                ? "bg-primary-soft text-primary font-semibold"
+                : "text-muted-foreground hover:bg-muted",
+            )}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

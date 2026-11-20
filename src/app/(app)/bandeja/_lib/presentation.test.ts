@@ -1,5 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { handoffSourceLabel, mediaNotStoredText } from "./presentation";
+import { conversationDisplayName, formatConversationDatePrefix, formatConversationFullDate, handoffSourceLabel, mediaNotStoredText } from "./presentation";
+
+describe("conversation display name and date formatting", () => {
+  const sampleDate = new Date("2026-10-30T08:41:12.000Z"); // 09:41:12 in Madrid (UTC+1 on standard time)
+
+  it("formats date prefix as ddMMyyyy_HHmmss", () => {
+    const prefix = formatConversationDatePrefix(sampleDate, "Europe/Madrid");
+    expect(prefix).toMatch(/^30102026_\d{6}$/);
+  });
+
+  it("formats full date with day of the week in Spanish", () => {
+    const full = formatConversationFullDate(sampleDate, "Europe/Madrid");
+    expect(full).toMatch(/^Viernes 30\/10\/2026 \d{2}:\d{2}:\d{2}$/);
+  });
+
+  it("builds display name with prefix and contact name", () => {
+    const name = conversationDisplayName("María Pérez", sampleDate, "Europe/Madrid");
+    expect(name).toMatch(/^30102026_\d{6} - María Pérez$/);
+  });
+
+  it("falls back to unnamed contact when name is missing", () => {
+    const name = conversationDisplayName(null, sampleDate, "Europe/Madrid");
+    expect(name).toMatch(/^30102026_\d{6} - Cliente sin nombre$/);
+  });
+});
 
 describe("where a hand-off comes from [TRA-07]", () => {
   it("names the AI, a person or the agent's rule", () => {

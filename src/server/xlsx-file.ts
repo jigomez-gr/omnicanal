@@ -4,13 +4,13 @@
 import "server-only";
 import { crc32, deflateRawSync } from "node:zlib";
 
-/** A ZIP (deflate) with the given files. */
-export function zipFiles(files: Record<string, string>): Uint8Array {
+/** A ZIP (deflate) with the given files (text or binary bytes). */
+export function zipFiles(files: Record<string, string | Uint8Array>): Uint8Array {
   const local: Buffer[] = [];
   const central: Buffer[] = [];
   let offset = 0;
   for (const [name, content] of Object.entries(files)) {
-    const data = Buffer.from(content, "utf8");
+    const data = typeof content === "string" ? Buffer.from(content, "utf8") : Buffer.from(content);
     const compressed = deflateRawSync(data);
     const nameBytes = Buffer.from(name, "utf8");
     const crc = crc32(data);
