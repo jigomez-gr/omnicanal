@@ -5,6 +5,7 @@ import { channels, contacts, conversations, messages } from "@/db/schema";
 import { readVapiSecrets } from "@/server/channels/vapi/config";
 import { publishConversationEvent } from "@/server/realtime/events";
 import { ensureVapiChannel } from "@/data/call-sync";
+import { cleanSpanishText } from "@/lib/vapi/client";
 
 /**
  * Webhook receiver for Vapi Voice Assistant ([VAPI-01]).
@@ -104,8 +105,10 @@ export async function POST(req: Request) {
 
       if (turnMessages.length > 0) {
         for (const m of turnMessages) {
-          const text = m.message || m.content;
-          if (!text) continue;
+          if (m.role === "system") continue;
+          const rawText = m.message || m.content;
+          if (!rawText) continue;
+          const text = cleanSpanishText(rawText);
           const isUser = m.role === "user" || m.role === "customer";
           await db.insert(messages).values({
             id: crypto.randomUUID(),
@@ -126,7 +129,7 @@ export async function POST(req: Request) {
           channelId,
           direction: "inbound",
           senderType: "contact",
-          text: artifact.transcript || message.transcript,
+          text: cleanSpanishText(artifact.transcript || message.transcript),
           status: "delivered",
           sentAt: now,
           createdAt: now,

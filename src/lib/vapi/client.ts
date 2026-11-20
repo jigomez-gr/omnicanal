@@ -182,6 +182,50 @@ export function normalizeE164Phone(raw: string): string {
   return `+${digits}`
 }
 
+/**
+ * Corrige mojibake UTF-8 decodificado erróneamente como ISO-8859-1 y
+ * normaliza acentos y signos de apertura en transcripciones en español.
+ */
+export function cleanSpanishText(raw: string | null | undefined): string {
+  if (!raw) return ""
+  return raw
+    // Mojibake típico de UTF-8 decodificado como Latin-1
+    .replace(/Ã¡/g, "á")
+    .replace(/Ã©/g, "é")
+    .replace(/Ã­/g, "í")
+    .replace(/Ã³/g, "ó")
+    .replace(/Ãº/g, "ú")
+    .replace(/Ã±/g, "ñ")
+    .replace(/Ã\u0081/g, "Á")
+    .replace(/Ã\u0089/g, "É")
+    .replace(/Ã\u008D/g, "Í")
+    .replace(/Ã\u0093/g, "Ó")
+    .replace(/Ã\u009A/g, "Ú")
+    .replace(/Ã\u0091/g, "Ñ")
+    .replace(/Â¿/g, "¿")
+    .replace(/Â¡/g, "¡")
+    // Palabras truncadas o con \uFFFD provenientes de VAPI
+    .replace(/\bLuc[\uFFFD]?a\b/gi, "Lucía")
+    .replace(/\bcontratac[\uFFFD]?n\b/gi, "contratación")
+    .replace(/\bproducc[\uFFFD]?n\b/gi, "producción")
+    .replace(/\bdirecc[\uFFFD]?n\b/gi, "dirección")
+    .replace(/\breun[\uFFFD]?n\b/gi, "reunión")
+    .replace(/\bprogramac[\uFFFD]?n\b/gi, "programación")
+    .replace(/\binformac[\uFFFD]?n\b/gi, "información")
+    .replace(/\bgest[\uFFFD]?n\b/gi, "gestión")
+    .replace(/\batenc[\uFFFD]?n\b/gi, "atención")
+    .replace(/\bqu[\uFFFD]?n\b/gi, "quién")
+    .replace(/\bCon Queen\b/gi, "¿Con quién")
+    .replace(/\bcachs\b/gi, "cachés")
+    .replace(/\bvdeo\b/gi, "vídeo")
+    .replace(/\bvdeos\b/gi, "vídeos")
+    .replace(/\btelfono\b/gi, "teléfono")
+    .replace(/\bJos[\uFFFD]?e\b/g, "José")
+    .replace(/\bG[\uFFFD]?omez\b/g, "Gómez")
+    .replace(/\uFFFD/g, "")
+    .trim()
+}
+
 export async function triggerVapiOutboundCall(params: {
   apiKey: string
   assistantId: string

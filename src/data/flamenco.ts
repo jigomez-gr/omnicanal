@@ -59,6 +59,7 @@ import {
 import { PERMISSIONS, type Actor } from "@/lib/permissions"
 import { createStripeCheckoutSession } from "@/lib/stripe/client"
 import {
+  cleanSpanishText,
   composeFlamencoVapiPrompt,
   connectZadarmaSipTrunkToVapi,
   fetchRecentVapiCalls,
@@ -2389,7 +2390,7 @@ export async function syncCallsFromVapi(actor: Actor) {
     let transcript = v.artifact?.transcript || v.transcript || ""
     if (!transcript && Array.isArray(v.artifact?.messages)) {
       transcript = v.artifact.messages
-        .filter((m) => m.message || m.content)
+        .filter((m) => (m.message || m.content) && m.role !== "system")
         .map((m) => {
           const role =
             m.role === "assistant" || m.role === "bot"
@@ -2401,8 +2402,10 @@ export async function syncCallsFromVapi(actor: Actor) {
         })
         .join("\n")
     }
+    transcript = cleanSpanishText(transcript)
 
-    const summary = v.analysis?.summary || v.summary || v.artifact?.summary || ""
+    const rawSummary = v.analysis?.summary || v.summary || v.artifact?.summary || ""
+    const summary = cleanSpanishText(rawSummary)
     const rawCost = typeof v.cost === "number" ? v.cost : 0
     const costCents = Math.round(rawCost * 100)
     const durationSeconds =

@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, notExists, sql } from "drizzle-orm";
+import { and, eq, ilike, notExists, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   calls,
@@ -10,6 +10,7 @@ import {
   vapiSettings,
   zadarmaSmsRespuesta,
 } from "@/db/schema";
+import { cleanSpanishText } from "@/lib/vapi/client";
 import { publishConversationEvent } from "@/server/realtime/events";
 
 /**
@@ -121,7 +122,7 @@ export async function syncCallToConversation(call: typeof calls.$inferSelect) {
     await db
       .update(conversations)
       .set({
-        summary: call.summary || existingConv.summary,
+        summary: cleanSpanishText(call.summary || existingConv.summary),
         metadata: {
           ...(existingConv.metadata || {}),
           ...metadata,
@@ -129,6 +130,36 @@ export async function syncCallToConversation(call: typeof calls.$inferSelect) {
         updatedAt: new Date(),
       })
       .where(eq(conversations.id, existingConv.id));
+
+    // Limpiar mensajes erróneos de sistema o herramientas que se hayan podido colar
+    await db
+      .delete(messages)
+      .where(
+        and(
+          eq(messages.conversationId, existingConv.id),
+          or(
+            ilike(messages.text, "Eres Luc%"),
+            ilike(messages.text, "System:%"),
+            ilike(messages.text, "Sistema:%"),
+            ilike(messages.text, "Herramienta:%"),
+          ),
+        ),
+      )
+      .catch(() => {});
+
+    // Reparar acentos y caracteres corruptos en mensajes existentes
+    const oldMsgs = await db
+      .select({ id: messages.id, text: messages.text })
+      .from(messages)
+      .where(eq(messages.conversationId, existingConv.id));
+
+    for (const m of oldMsgs) {
+      const cleaned = cleanSpanishText(m.text);
+      if (cleaned !== m.text) {
+        await db.update(messages).set({ text: cleaned }).where(eq(messages.id, m.id)).catch(() => {});
+      }
+    }
+
     return existingConv.id;
   }
 
@@ -143,7 +174,7 @@ export async function syncCallToConversation(call: typeof calls.$inferSelect) {
       status: "resolved",
       lastInboundAt: now,
       lastMessageAt: now,
-      summary: call.summary || `Llamada ${call.direction === "inbound" ? "entrante" : "saliente"} (${call.durationSeconds}s)`,
+      summary: cleanSpanishText(call.summary || `Llamada ${call.direction === "inbound" ? "entrante" : "saliente"} (${call.durationSeconds}s)`),
       metadata,
     })
     .returning();
@@ -153,7 +184,20 @@ export async function syncCallToConversation(call: typeof calls.$inferSelect) {
     const lines = call.transcript.split("\n").map((l) => l.trim()).filter(Boolean);
     let msgTime = new Date(now.getTime() - lines.length * 10000);
 
-    for (const line of lines) {
+    for (const rawLine of lines) {
+      const line = cleanSpanishText(rawLine);
+      // Omitir líneas de sistema, prompts o herramientas internas
+      if (
+        line.toLowerCase().startsWith("system:") ||
+        line.toLowerCase().startsWith("sistema:") ||
+        line.toLowerCase().startsWith("eres lucía") ||
+        line.toLowerCase().startsWith("eres lucia") ||
+        line.toLowerCase().startsWith("herramienta:") ||
+        line.toLowerCase().startsWith("tool:")
+      ) {
+        continue;
+      }
+
       let isBot = false;
       let text = line;
       if (
@@ -175,6 +219,8 @@ export async function syncCallToConversation(call: typeof calls.$inferSelect) {
       } else if (call.direction === "outbound") {
         isBot = true;
       }
+
+      text = cleanSpanishText(text);
 
       await db.insert(messages).values({
         id: crypto.randomUUID(),
