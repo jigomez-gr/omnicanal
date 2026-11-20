@@ -2421,7 +2421,7 @@ export async function syncCallsFromVapi(actor: Actor) {
 
     const [existing] = await db.select().from(calls).where(eq(calls.vapiCallId, v.id)).limit(1)
     if (existing) {
-      await db
+      const [updated] = await db
         .update(calls)
         .set({
           recordingUrl: recordingUrl || existing.recordingUrl,
@@ -2433,6 +2433,10 @@ export async function syncCallsFromVapi(actor: Actor) {
           updatedAt: new Date(),
         })
         .where(eq(calls.id, existing.id))
+        .returning()
+      if (updated) {
+        await syncCallToConversation(updated).catch(() => {})
+      }
       updatedCount++
     } else {
       const phone = v.customer?.number || v.phoneNumber?.number || "+34919933764"
@@ -2442,20 +2446,26 @@ export async function syncCallsFromVapi(actor: Actor) {
       const direction = v.type === "inboundPhoneCall" ? "inbound" : "outbound"
       const startedAt = v.startedAt ? new Date(v.startedAt) : new Date()
 
-      await db.insert(calls).values({
-        vapiCallId: v.id,
-        direction,
-        callerName,
-        phoneNumber: phone,
-        status,
-        durationSeconds,
-        costCents,
-        summary: summary || `Llamada ${direction} procesada por el agente de VAPI.`,
-        transcript,
-        recordingUrl,
-        startedAt,
-        endedAt: v.endedAt ? new Date(v.endedAt) : null,
-      })
+      const [createdCall] = await db
+        .insert(calls)
+        .values({
+          vapiCallId: v.id,
+          direction,
+          callerName,
+          phoneNumber: phone,
+          status,
+          durationSeconds,
+          costCents,
+          summary: summary || `Llamada ${direction} procesada por el agente de VAPI.`,
+          transcript,
+          recordingUrl,
+          startedAt,
+          endedAt: v.endedAt ? new Date(v.endedAt) : null,
+        })
+        .returning()
+      if (createdCall) {
+        await syncCallToConversation(createdCall).catch(() => {})
+      }
       updatedCount++
     }
   }
@@ -2477,7 +2487,7 @@ export async function syncCallsFromVapi(actor: Actor) {
           single.recordingUrl ||
           single.stereoRecordingUrl
         if (recUrl) {
-          await db
+          const [updated] = await db
             .update(calls)
             .set({
               recordingUrl: recUrl,
@@ -2486,6 +2496,10 @@ export async function syncCallsFromVapi(actor: Actor) {
               updatedAt: new Date(),
             })
             .where(eq(calls.id, c.id))
+            .returning()
+          if (updated) {
+            await syncCallToConversation(updated).catch(() => {})
+          }
           updatedCount++
         }
       }

@@ -80,7 +80,7 @@ export default async function ConversationPage({ params }: PageProps) {
           now={now}
         />
         {conversation.openHandoff ? <HandoffNotice handoff={conversation.openHandoff} timezone={timezone} now={now} /> : null}
-        {conversation.channel.type === "phone_vapi" ? <CallDetailBanner metadata={conversation.metadata} summary={conversation.summary} /> : null}
+        {conversation.channel.type === "phone_vapi" ? <CallDetailBanner conversationId={conversation.id} metadata={conversation.metadata} summary={conversation.summary} /> : null}
         {conversation.channel.type === "sms_zadarma" ? <SmsDetailBanner metadata={conversation.metadata} /> : null}
         {email ? <EmailThreadHeader thread={email} /> : null}
         <EmailThreadProvider key={`email-${conversation.id}`} thread={email}>

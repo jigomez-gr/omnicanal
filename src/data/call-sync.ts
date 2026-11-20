@@ -308,6 +308,12 @@ export async function syncPendingCallsAndSmsToConversations() {
       await syncCallToConversation(call);
     }
 
+    // Actualizar también metadatos de las llamadas existentes recientes (para asegurar callId y grabaciones actualizadas)
+    const recentCalls = await db.select().from(calls).orderBy(sql`${calls.createdAt} desc`).limit(20);
+    for (const call of recentCalls) {
+      await syncCallToConversation(call);
+    }
+
     const unmappedSms = await db
       .select()
       .from(zadarmaSmsRespuesta)

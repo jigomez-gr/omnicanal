@@ -2,12 +2,13 @@ import { Clock, DollarSign, Download, FileText, PhoneIncoming, PhoneOutgoing, Sm
 import { cn } from "@/lib/utils";
 
 type CallBannerProps = {
+  conversationId?: string;
   metadata?: Record<string, unknown> | null;
   summary?: string | null;
   className?: string;
 };
 
-export function CallDetailBanner({ metadata, summary, className }: CallBannerProps) {
+export function CallDetailBanner({ conversationId, metadata, summary, className }: CallBannerProps) {
   const meta = metadata ?? {};
   const direction = (meta.direction as string) ?? "inbound";
   const durationSec = typeof meta.durationSeconds === "number" ? meta.durationSeconds : (meta.duration as number) ?? null;
@@ -19,9 +20,10 @@ export function CallDetailBanner({ metadata, summary, className }: CallBannerPro
   const callStatus = (meta.status as string) ?? "ended";
   const callSummary = summary || (meta.summary as string) || null;
 
-  // Si disponemos de identificador de la llamada, usamos el proxy seguro del servidor que renueva enlaces de S3 y añade auth
-  const audioSrc = (callId || vapiCallId)
-    ? `/api/calls/${encodeURIComponent(callId || vapiCallId!)}/recording`
+  // Si disponemos de identificador (callId, vapiCallId o conversationId), usamos el proxy seguro del servidor
+  const targetId = callId || vapiCallId || conversationId || "";
+  const audioSrc = targetId
+    ? `/api/calls/${encodeURIComponent(targetId)}/recording`
     : rawRecordingUrl;
 
   const downloadUrl = audioSrc
