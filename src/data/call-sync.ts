@@ -106,6 +106,7 @@ export async function syncCallToConversation(call: typeof calls.$inferSelect) {
 
   const now = call.startedAt || call.createdAt || new Date();
   const metadata = {
+    callId: call.id,
     vapiCallId: call.vapiCallId,
     direction: call.direction,
     durationSeconds: call.durationSeconds,

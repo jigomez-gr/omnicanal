@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm"
+import { eq, or } from "drizzle-orm"
 import { NextResponse } from "next/server"
 import { db } from "@/db"
 import { calls, vapiSettings } from "@/db/schema"
@@ -10,7 +10,7 @@ export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
   try {
@@ -20,7 +20,12 @@ export async function GET(
   }
 
   const { id } = await context.params
-  const [call] = await db.select().from(calls).where(eq(calls.id, id)).limit(1)
+  const [call] = await db
+    .select()
+    .from(calls)
+    .where(or(eq(calls.id, id), eq(calls.vapiCallId, id)))
+    .limit(1)
+
   if (!call) {
     return NextResponse.json({ error: "Llamada no encontrada" }, { status: 404 })
   }
@@ -56,7 +61,7 @@ export async function GET(
     }
   }
 
-  // Fallback a endpoint mono-recording de VAPI
+  // Fallback a endpoint mono-recording de VAPI si no hay URL guardada
   if (!targetUrl && call.vapiCallId && !call.vapiCallId.startsWith("vapi_sim_")) {
     targetUrl = `https://api.vapi.ai/call/${call.vapiCallId}/mono-recording`
   }
@@ -69,6 +74,9 @@ export async function GET(
   }
 
   try {
+    const url = new URL(request.url)
+    const isDownload = url.searchParams.get("download") === "1"
+
     const headers: Record<string, string> = {}
     if (targetUrl.includes("api.vapi.ai")) {
       headers["Authorization"] = `Bearer ${apiKey}`
@@ -76,13 +84,39 @@ export async function GET(
 
     let upstream = await fetch(targetUrl, { headers, redirect: "follow" })
 
-    // Si falló y era URL externa, intentar con mono-recording de VAPI
-    if (!upstream.ok && call.vapiCallId && !targetUrl.includes("mono-recording")) {
-      const altUrl = `https://api.vapi.ai/call/${call.vapiCallId}/mono-recording`
-      upstream = await fetch(altUrl, {
-        headers: { Authorization: `Bearer ${apiKey}` },
-        redirect: "follow",
-      })
+    // Si falló (p.ej. URL de S3 caducada con 403 Forbidden), refrescar con VAPI
+    if (!upstream.ok && call.vapiCallId && !call.vapiCallId.startsWith("vapi_sim_")) {
+      const vapiData = await fetchVapiCall(apiKey, call.vapiCallId)
+      const freshUrl =
+        vapiData?.artifact?.recordingUrl ||
+        vapiData?.artifact?.stereoRecordingUrl ||
+        vapiData?.recordingUrl ||
+        vapiData?.stereoRecordingUrl ||
+        null
+
+      if (freshUrl && freshUrl !== targetUrl) {
+        const freshHeaders: Record<string, string> = {}
+        if (freshUrl.includes("api.vapi.ai")) {
+          freshHeaders["Authorization"] = `Bearer ${apiKey}`
+        }
+        upstream = await fetch(freshUrl, { headers: freshHeaders, redirect: "follow" })
+        if (upstream.ok) {
+          targetUrl = freshUrl
+          await db
+            .update(calls)
+            .set({ recordingUrl: freshUrl, updatedAt: new Date() })
+            .where(eq(calls.id, call.id))
+        }
+      }
+
+      // Si aún no responde, intentar con mono-recording de VAPI
+      if (!upstream.ok) {
+        const altUrl = `https://api.vapi.ai/call/${call.vapiCallId}/mono-recording`
+        upstream = await fetch(altUrl, {
+          headers: { Authorization: `Bearer ${apiKey}` },
+          redirect: "follow",
+        })
+      }
     }
 
     if (!upstream.ok) {
@@ -94,10 +128,18 @@ export async function GET(
 
     const contentType = upstream.headers.get("content-type") || "audio/mpeg"
     const arrayBuffer = await upstream.arrayBuffer()
+    const cleanPhone = (call.phoneNumber || call.vapiCallId || call.id).replace(/[^a-zA-Z0-9_-]/g, "_")
+    const filename = `grabacion-llamada-${cleanPhone}.mp3`
+
     return new Response(arrayBuffer, {
       status: 200,
       headers: {
         "Content-Type": contentType,
+        "Content-Length": String(arrayBuffer.byteLength),
+        "Accept-Ranges": "bytes",
+        "Content-Disposition": isDownload
+          ? `attachment; filename="${filename}"`
+          : `inline; filename="${filename}"`,
         "Cache-Control": "private, max-age=3600",
       },
     })

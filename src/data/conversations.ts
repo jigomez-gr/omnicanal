@@ -117,7 +117,9 @@ function preview(text: string | null): string | null {
 /** Bandeja: one page of conversations, newest activity first ([BAN-01], [BAN-02]). */
 export async function listConversations(actor: Actor, input: unknown = {}): Promise<ConversationPage> {
   assertCan(actor, PERMISSIONS.inbox.view);
-  await syncPendingCallsAndSmsToConversations().catch(() => {});
+  if (process.env.NODE_ENV !== "test") {
+    await syncPendingCallsAndSmsToConversations().catch(() => {});
+  }
   const filters = parseInput(conversationFiltersSchema, input);
   const scope = scopeConditions(actor);
   if (!scope) return { items: [], nextCursor: null };

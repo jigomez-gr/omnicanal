@@ -1,4 +1,4 @@
-import { Clock, DollarSign, FileText, PhoneIncoming, PhoneOutgoing, Smartphone } from "lucide-react";
+import { Clock, DollarSign, Download, FileText, PhoneIncoming, PhoneOutgoing, Smartphone, Volume2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type CallBannerProps = {
@@ -12,10 +12,21 @@ export function CallDetailBanner({ metadata, summary, className }: CallBannerPro
   const direction = (meta.direction as string) ?? "inbound";
   const durationSec = typeof meta.durationSeconds === "number" ? meta.durationSeconds : (meta.duration as number) ?? null;
   const cost = typeof meta.cost === "number" ? meta.cost : null;
-  const recordingUrl = (meta.recordingUrl as string) ?? null;
+  const rawRecordingUrl = (meta.recordingUrl as string) ?? null;
+  const callId = (meta.callId as string) ?? null;
+  const vapiCallId = (meta.vapiCallId as string) ?? null;
   const callerNumber = (meta.callerNumber as string) ?? (meta.fromNumber as string) ?? (meta.toNumber as string) ?? null;
   const callStatus = (meta.status as string) ?? "ended";
   const callSummary = summary || (meta.summary as string) || null;
+
+  // Si disponemos de identificador de la llamada, usamos el proxy seguro del servidor que renueva enlaces de S3 y añade auth
+  const audioSrc = (callId || vapiCallId)
+    ? `/api/calls/${encodeURIComponent(callId || vapiCallId!)}/recording`
+    : rawRecordingUrl;
+
+  const downloadUrl = audioSrc
+    ? `${audioSrc}${audioSrc.includes("?") ? "&" : "?"}download=1`
+    : null;
 
   const formatDuration = (sec: number) => {
     const mins = Math.floor(sec / 60);
@@ -62,14 +73,33 @@ export function CallDetailBanner({ metadata, summary, className }: CallBannerPro
         </div>
       </div>
 
-      {recordingUrl ? (
-        <div className="space-y-1">
-          <p className="text-[11px] font-semibold text-blue-900">Grabación de audio de la llamada:</p>
-          <audio controls src={recordingUrl} className="w-full h-8 outline-none">
+      {audioSrc ? (
+        <div className="space-y-1.5 rounded-lg border border-blue-100 bg-white/80 p-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-blue-900">
+              <Volume2 className="size-3.5 text-blue-600" />
+              <span>Grabación de audio de la llamada:</span>
+            </div>
+            {downloadUrl ? (
+              <a
+                href={downloadUrl}
+                download
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-700 hover:text-blue-900 underline"
+              >
+                <Download className="size-3" />
+                Descargar audio (.mp3)
+              </a>
+            ) : null}
+          </div>
+          <audio controls preload="metadata" src={audioSrc} className="w-full h-8 outline-none">
             Tu navegador no soporta el reproductor de audio.
           </audio>
         </div>
-      ) : null}
+      ) : (
+        <div className="rounded-lg border border-blue-100 bg-white/60 p-2 text-[11px] text-blue-800">
+          Audio en proceso de generación en VAPI. Si la llamada acaba de finalizar, se cargará en unos instantes.
+        </div>
+      )}
 
       {callSummary ? (
         <div className="rounded-lg border border-blue-100 bg-white/70 p-2.5 text-xs text-blue-950 space-y-1">
