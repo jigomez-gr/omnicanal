@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { channels, contacts, conversations, messages } from "@/db/schema";
 import { publishConversationEvent } from "@/server/realtime/events";
+import { ensureZadarmaChannel } from "@/data/call-sync";
 
 /**
  * Webhook receiver for Zadarma SMS ([ZAD-01]).
@@ -54,8 +55,11 @@ export async function POST(req: Request) {
     const senderId = typeof payload.to === "string" ? payload.to : "Zadarma";
 
     if (callerNumber && smsText) {
-      // Find active Zadarma channel
-      const [channel] = await db.select().from(channels).where(eq(channels.type, "sms_zadarma")).limit(1);
+      // Find or ensure active Zadarma channel
+      let [channel] = await db.select().from(channels).where(eq(channels.type, "sms_zadarma")).limit(1);
+      if (!channel) {
+        channel = await ensureZadarmaChannel();
+      }
 
       // 1. Match or create contact
       let [contact] = await db.select().from(contacts).where(eq(contacts.phone, callerNumber));

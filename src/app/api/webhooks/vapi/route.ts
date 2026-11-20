@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { channels, contacts, conversations, messages } from "@/db/schema";
 import { readVapiSecrets } from "@/server/channels/vapi/config";
 import { publishConversationEvent } from "@/server/realtime/events";
+import { ensureVapiChannel } from "@/data/call-sync";
 
 /**
  * Webhook receiver for Vapi Voice Assistant ([VAPI-01]).
@@ -15,8 +16,11 @@ export async function POST(req: Request) {
     const authHeader = req.headers.get("authorization");
     const secretHeader = req.headers.get("x-vapi-secret");
 
-    // Locate active Vapi channel
-    const [channel] = await db.select().from(channels).where(eq(channels.type, "phone_vapi")).limit(1);
+    // Locate or ensure active Vapi channel
+    let [channel] = await db.select().from(channels).where(eq(channels.type, "phone_vapi")).limit(1);
+    if (!channel) {
+      channel = await ensureVapiChannel();
+    }
 
     if (channel) {
       const secrets = readVapiSecrets(channel);

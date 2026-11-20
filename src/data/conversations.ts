@@ -7,6 +7,7 @@ import { aliasedTable, and, count, desc, eq, exists, gt, gte, ilike, inArray, is
 import { z } from "zod";
 import { db } from "@/db";
 import { agents, channels, contacts, conversations, handoffEvents, messages, user } from "@/db/schema";
+import { syncPendingCallsAndSmsToConversations } from "./call-sync";
 import { CONVERSATION_STATUSES, type ChannelType, type ConversationStatus, type HandoffTrigger, type MessageContentType, type SenderType, type Urgency } from "@/lib/enums";
 import { whatsappWindowState } from "@/lib/meta/window";
 import { channelFilter, PERMISSIONS, type Actor } from "@/lib/permissions";
@@ -116,6 +117,7 @@ function preview(text: string | null): string | null {
 /** Bandeja: one page of conversations, newest activity first ([BAN-01], [BAN-02]). */
 export async function listConversations(actor: Actor, input: unknown = {}): Promise<ConversationPage> {
   assertCan(actor, PERMISSIONS.inbox.view);
+  await syncPendingCallsAndSmsToConversations().catch(() => {});
   const filters = parseInput(conversationFiltersSchema, input);
   const scope = scopeConditions(actor);
   if (!scope) return { items: [], nextCursor: null };

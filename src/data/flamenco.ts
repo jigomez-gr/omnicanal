@@ -32,6 +32,11 @@ import {
   zadarmaSmsRespuesta,
 } from "@/db/schema"
 import {
+  syncCallToConversation,
+  syncSmsToConversation,
+  syncPendingCallsAndSmsToConversations,
+} from "./call-sync"
+import {
   createCalcomBooking,
   getCalcomV2BaseUrl,
   testCalcomConnection,
@@ -2261,6 +2266,8 @@ export async function launchOutboundVapiCallAction(
     })
     .returning()
 
+  await syncCallToConversation(callRecord).catch(() => {})
+
   return {
     ...res,
     callRecord,
@@ -2301,6 +2308,8 @@ export async function sendZadarmaSmsFromDashboard(
       callId: params.relatedCallId ?? null,
     })
     .returning()
+
+  await syncSmsToConversation(savedLog).catch(() => {})
 
   return {
     ok: smsRes.ok,
@@ -2482,6 +2491,8 @@ export async function syncCallsFromVapi(actor: Actor) {
       }
     }
   }
+
+  await syncPendingCallsAndSmsToConversations().catch(() => {})
 
   return {
     ok: true,
