@@ -38,6 +38,9 @@ services:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-1}
       MEDIA_STORAGE_ROOT: ${MEDIA_STORAGE_ROOT:-/var/data/soniqueteflamenco/media}
+      EVOLUTION_API_URL: ${EVOLUTION_API_URL:-https://evolutionapisoniqueteflamenco.jigretera.com}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-}
+      EVOLUTION_INSTANCE_NAME: ${EVOLUTION_INSTANCE_NAME:-soniqueteflamenco}
     volumes:
       - /var/data/soniqueteflamenco/media:/var/data/soniqueteflamenco/media:rw
     networks:
@@ -66,6 +69,9 @@ services:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       EMAIL_IMAP_IDLE: ${EMAIL_IMAP_IDLE:-true}
       MEDIA_STORAGE_ROOT: ${MEDIA_STORAGE_ROOT:-/var/data/soniqueteflamenco/media}
+      EVOLUTION_API_URL: ${EVOLUTION_API_URL:-https://evolutionapisoniqueteflamenco.jigretera.com}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-}
+      EVOLUTION_INSTANCE_NAME: ${EVOLUTION_INSTANCE_NAME:-soniqueteflamenco}
     volumes:
       - /var/data/soniqueteflamenco/media:/var/data/soniqueteflamenco/media:rw
     networks:
