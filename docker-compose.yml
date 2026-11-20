@@ -9,9 +9,11 @@
 x-app: &app
   image: ${APP_IMAGE:-ghcr.io/josemafe7/agentes-whatsapp:latest}
   pull_policy: always
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
   environment:
-    # Supabase's «Session pooler» (port 5432): the one for a server that is always on.
-    DATABASE_URL: ${DATABASE_URL:?Falta DATABASE_URL (la del Session pooler de Supabase)}
+    # URL de conexión a PostgreSQL (PostgreSQL en el host:5433 o Supabase Session pooler).
+    DATABASE_URL: ${DATABASE_URL:?Falta DATABASE_URL}
     # The app's public address with https://; the sign-in uses the same one.
     APP_URL: ${APP_URL:?Falta APP_URL (la dirección pública de la app, con https://)}
     BETTER_AUTH_URL: ${APP_URL}
@@ -20,9 +22,9 @@ x-app: &app
     # The same in web and worker: the worker asks web for the sends of WhatsApp by QR code.
     CRON_SECRET: ${CRON_SECRET:?Falta CRON_SECRET}
     SETUP_TOKEN: ${SETUP_TOKEN:?Falta SETUP_TOKEN}
-    # The files, in Supabase Storage (a private bucket the app creates by itself).
-    SUPABASE_URL: ${SUPABASE_URL:?Falta SUPABASE_URL}
-    SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:?Falta SUPABASE_SECRET_KEY}
+    # Files: Supabase Storage if configured, or persistent host disk (/var/data/soniqueteflamenco/media).
+    SUPABASE_URL: ${SUPABASE_URL:-}
+    SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:-}
     DEMO_MODE: "false"
     # Optional: better in the app, in Ajustes › IA.
     OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}

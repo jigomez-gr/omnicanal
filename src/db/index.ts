@@ -77,7 +77,7 @@ export function resolveDatabaseTarget(url: string = databaseUrlFromEnv()): Datab
 export function serverConnectionOptions(url: string): postgres.Options<Record<string, postgres.PostgresType>> {
   return {
     prepare: false,
-    ssl: isLocalHost(url) ? false : "require",
+    ssl: isLocalHost(url) || isSslDisabled(url) ? false : "require",
     max: 5,
     idle_timeout: 20,
     connect_timeout: 15,
@@ -86,9 +86,22 @@ export function serverConnectionOptions(url: string): postgres.Options<Record<st
   };
 }
 
+function isSslDisabled(url: string): boolean {
+  try {
+    return new URL(url).searchParams.get("sslmode") === "disable";
+  } catch {
+    return false;
+  }
+}
+
 function isLocalHost(url: string): boolean {
   try {
-    return ["localhost", "127.0.0.1", "[::1]", "::1"].includes(new URL(url).hostname);
+    const host = new URL(url).hostname.toLowerCase();
+    return (
+      ["localhost", "127.0.0.1", "[::1]", "::1", "host.docker.internal"].includes(host) ||
+      host.endsWith(".local") ||
+      host.endsWith(".internal")
+    );
   } catch {
     return false;
   }

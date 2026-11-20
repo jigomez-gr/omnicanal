@@ -36,9 +36,31 @@ export function loadLocalEnv(rootDir: string = process.cwd()): boolean {
   return true;
 }
 
+function isSupabaseServer(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (
+      parsed.hostname.includes("supabase.co") ||
+      parsed.hostname.includes("supabase.net") ||
+      parsed.hostname.includes("pooler.supabase.com")
+    ) {
+      return true;
+    }
+    if (parsed.username.startsWith("postgres.")) {
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 /** The database a command works on, for its messages: never the URL itself (it may carry the password). */
 export function describeDatabase(target: DatabaseTarget, rootDir: string = process.cwd()): string {
-  if (target.kind === "server") return "la base de datos de Supabase";
+  if (target.kind === "server") {
+    if (isSupabaseServer(target.url)) return "la base de datos de Supabase";
+    return "la base de datos PostgreSQL";
+  }
   if (target.kind === "memory") return "la base de datos en memoria";
   const relative = path.relative(rootDir, target.dataDir);
   const shown = relative && !relative.startsWith("..") && !path.isAbsolute(relative) ? relative : target.dataDir;

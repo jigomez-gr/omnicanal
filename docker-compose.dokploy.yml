@@ -1,33 +1,22 @@
 # Stack de Dokploy para el CRM de Soniquete Flamenco (omnicanal)
 # Dominio: https://crm.soniqueteconarte.jigretera.com (Servicio: web, Puerto: 3000)
+# Base de datos: PostgreSQL nativa en el sistema de archivos del servidor (puerto 5433, no en Docker).
 # Comparte el volumen multimedia /var/data/soniqueteflamenco/media con la Landing sin duplicar ficheros en Git.
 
 services:
-  db:
-    image: postgres:17
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-omnicanal_soniquete}
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-W39xlpS9}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - internal
-
   web:
     build:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
-    depends_on:
-      - db
     expose:
       - "3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       NODE_ENV: production
       PORT: "3000"
-      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-W39xlpS9}@db:5432/${POSTGRES_DB:-omnicanal_soniquete}}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-W39xlpS9}@host.docker.internal:5433/${POSTGRES_DB:-evolution_soniquete}}
       APP_URL: ${APP_URL:-https://crm.soniqueteconarte.jigretera.com}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-https://crm.soniqueteconarte.jigretera.com}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
@@ -44,7 +33,6 @@ services:
     volumes:
       - /var/data/soniqueteflamenco/media:/var/data/soniqueteflamenco/media:rw
     networks:
-      - internal
       - dokploy-network
 
   worker:
@@ -54,11 +42,12 @@ services:
     command: ["node_modules/.bin/tsx", "--conditions=react-server", "scripts/worker.ts"]
     restart: unless-stopped
     depends_on:
-      - db
       - web
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       NODE_ENV: production
-      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-W39xlpS9}@db:5432/${POSTGRES_DB:-omnicanal_soniquete}}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-W39xlpS9}@host.docker.internal:5433/${POSTGRES_DB:-evolution_soniquete}}
       APP_URL: ${APP_URL:-https://crm.soniqueteconarte.jigretera.com}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-https://crm.soniqueteconarte.jigretera.com}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
@@ -75,12 +64,8 @@ services:
     volumes:
       - /var/data/soniqueteflamenco/media:/var/data/soniqueteflamenco/media:rw
     networks:
-      - internal
-
-volumes:
-  postgres_data:
+      - dokploy-network
 
 networks:
-  internal:
   dokploy-network:
     external: true
