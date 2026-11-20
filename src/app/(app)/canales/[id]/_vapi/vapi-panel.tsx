@@ -6,21 +6,20 @@ import { Button } from "@/components/ui/button";
 import type { ChannelDetail } from "@/data/channels";
 import type { Actor } from "@/lib/permissions";
 import { simulateVapiCallAction } from "./actions";
-import { vapiWebhookUrl } from "@/server/channels/vapi/config";
 
 type VapiPanelProps = {
   actor: Actor;
   channel: ChannelDetail;
   canManage: boolean;
   timezone: string;
+  webhookUrl: string;
 };
 
-export function VapiPanel({ channel, canManage }: VapiPanelProps) {
+export function VapiPanel({ channel, canManage, webhookUrl }: VapiPanelProps) {
   const [copied, setCopied] = useState(false);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
 
-  const webhookUrl = vapiWebhookUrl();
   const config = (channel.config ?? {}) as Record<string, unknown>;
 
   const copyWebhook = () => {

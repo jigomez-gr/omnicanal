@@ -25,6 +25,8 @@ import { WhatsAppQrPanel } from "./_whatsapp-qr/whatsapp-qr-panel";
 import { YCloudPanel } from "./_ycloud/ycloud-panel";
 import { VapiPanel } from "./_vapi/vapi-panel";
 import { ZadarmaPanel } from "./_zadarma/zadarma-panel";
+import { vapiWebhookUrl } from "@/server/channels/vapi/config";
+import { zadarmaWebhookUrl } from "@/server/channels/zadarma/config";
 import { loadChannelPage } from "./_lib/load";
 
 export const metadata: Metadata = { title: "Canal" };
@@ -155,8 +157,8 @@ export default async function ChannelSummaryPage({ params, searchParams }: PageP
       ) : null}
       {channel.type === "telegram" ? <TelegramPanel actor={actor} channel={channel} canManage={canManage} timezone={profile.timezone} /> : null}
       {channel.type === "instagram" ? <InstagramPanel actor={actor} channel={channel} canManage={canManage} timezone={profile.timezone} /> : null}
-      {channel.type === "phone_vapi" ? <VapiPanel actor={actor} channel={channel} canManage={canManage} timezone={profile.timezone} /> : null}
-      {channel.type === "sms_zadarma" ? <ZadarmaPanel actor={actor} channel={channel} canManage={canManage} timezone={profile.timezone} /> : null}
+      {channel.type === "phone_vapi" ? <VapiPanel actor={actor} channel={channel} canManage={canManage} timezone={profile.timezone} webhookUrl={vapiWebhookUrl()} /> : null}
+      {channel.type === "sms_zadarma" ? <ZadarmaPanel actor={actor} channel={channel} canManage={canManage} timezone={profile.timezone} webhookUrl={zadarmaWebhookUrl()} /> : null}
 
       {channel.type === "webchat" ? (
         <section aria-labelledby="channel-try" className="grid gap-3 rounded-xl border p-4">

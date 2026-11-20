@@ -6,21 +6,20 @@ import { Button } from "@/components/ui/button";
 import type { ChannelDetail } from "@/data/channels";
 import type { Actor } from "@/lib/permissions";
 import { simulateZadarmaSmsAction } from "./actions";
-import { zadarmaWebhookUrl } from "@/server/channels/zadarma/config";
 
 type ZadarmaPanelProps = {
   actor: Actor;
   channel: ChannelDetail;
   canManage: boolean;
   timezone: string;
+  webhookUrl: string;
 };
 
-export function ZadarmaPanel({ channel, canManage }: ZadarmaPanelProps) {
+export function ZadarmaPanel({ channel, canManage, webhookUrl }: ZadarmaPanelProps) {
   const [copied, setCopied] = useState(false);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
 
-  const webhookUrl = zadarmaWebhookUrl();
   const config = (channel.config ?? {}) as Record<string, unknown>;
 
   const copyWebhook = () => {
