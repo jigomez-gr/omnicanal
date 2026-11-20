@@ -134,6 +134,8 @@ export const CHANNEL_KIND_LABELS: Record<ChannelKind, string> = {
   webchat: "Chat web",
   telegram: "Telegram",
   instagram: "Instagram",
+  phone: "Llamadas",
+  sms: "SMS",
 };
 
 /** The kinds a baja «para todos los canales» covers ([CTO-10]). */

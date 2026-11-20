@@ -11,7 +11,7 @@ import { formatDateTime, formatNumber, toSingleLine } from "@/lib/format";
 import type { ChatMessage, FilePart, ImagePart } from "@/lib/openrouter/types";
 import { SECTOR_PRESETS } from "@/lib/sectors";
 
-export type PromptChannelKind = "whatsapp" | "email" | "webchat" | "telegram" | "instagram" | "test";
+export type PromptChannelKind = "whatsapp" | "email" | "webchat" | "telegram" | "instagram" | "phone" | "sms" | "test";
 /** Channels «Probar agente» can simulate ([PRU-03]). */
 export const SIMULATED_CHANNELS = ["whatsapp", "email", "webchat"] as const;
 export type SimulatedChannel = (typeof SIMULATED_CHANNELS)[number];
@@ -142,6 +142,8 @@ const CHANNEL_LABELS: Record<Exclude<PromptChannelKind, "test">, string> = {
   webchat: "chat de la web",
   telegram: "Telegram",
   instagram: "mensajes directos de Instagram",
+  phone: "llamadas de voz telefónicas",
+  sms: "mensajes SMS",
 };
 const SHORT_STYLE = "Estilo para este canal: mensajes breves y naturales, como en una conversación de chat, sin tablas ni encabezados.";
 /** Telegram sends «/start» by itself when someone opens the chat with a bot for the first time ([TG-10]). */

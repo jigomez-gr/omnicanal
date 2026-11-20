@@ -103,6 +103,18 @@ const OTHER_OPTIONS: ChannelOption[] = [
     description: "Los mensajes directos de la cuenta profesional del negocio, con tu propia app de Meta: pegas su token y su clave, y respondes con la IA y desde la bandeja.",
     href: "/canales/nuevo/instagram",
   },
+  {
+    type: "phone_vapi",
+    title: "Vapi (Llamadas de voz)",
+    description: "Conecta tu asistente de voz de Vapi para gestionar llamadas telefónicas entrantes y salientes.",
+    href: "/canales/nuevo/vapi",
+  },
+  {
+    type: "sms_zadarma",
+    title: "Zadarma (SMS)",
+    description: "Pasarela de mensajería SMS para enviar y recibir mensajes de texto y confirmaciones.",
+    href: "/canales/nuevo/zadarma",
+  },
 ];
 
 const CARD = "relative flex flex-col gap-3 rounded-xl border bg-card p-4 transition-colors focus-within:ring-2 focus-within:ring-ring hover:bg-accent";

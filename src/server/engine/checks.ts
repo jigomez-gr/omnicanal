@@ -53,7 +53,7 @@ export function normalizeIdentifier(value: string): string {
 }
 
 /** Channel types whose identity phone comes from the channel itself (WhatsApp's wa_id), not from what someone typed. */
-const CHANNEL_GIVES_PHONE: ReadonlySet<ChannelType> = new Set(["whatsapp"]);
+const CHANNEL_GIVES_PHONE: ReadonlySet<ChannelType> = new Set(["whatsapp", "phone_vapi", "sms_zadarma"]);
 
 /**
  * What the test-mode list is compared with ([CAN-06]): only what the channel vouches for about the sender (the web

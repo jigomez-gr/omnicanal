@@ -67,7 +67,7 @@ export function reportKpis(report: Report): Kpi[] {
 }
 
 /** Chart colour of each kind of channel (DESIGN.md «Identidad de canal»; the chart config gives them their colour). */
-export type ChannelChartKey = "whatsapp" | "email" | "web" | "telegram" | "instagram";
+export type ChannelChartKey = "whatsapp" | "email" | "web" | "telegram" | "instagram" | "phone" | "sms";
 
 const CHANNEL_CHART_KEY: Record<ChannelType, ChannelChartKey> = {
   whatsapp: "whatsapp",
@@ -77,6 +77,8 @@ const CHANNEL_CHART_KEY: Record<ChannelType, ChannelChartKey> = {
   webchat: "web",
   telegram: "telegram",
   instagram: "instagram",
+  phone_vapi: "phone",
+  sms_zadarma: "sms",
 };
 
 export type ChannelBar = { name: string; conversations: number; resolvedByAi: number; colorKey: ChannelChartKey };

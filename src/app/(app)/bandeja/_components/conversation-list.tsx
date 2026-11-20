@@ -247,15 +247,6 @@ export function ConversationList({ channels, timezone, initialNow, canConnectCha
   // One H1 per page: the conversation has its own when one is open.
   const Heading = selectedId ? "h2" : "h1";
 
-  // Channel types available in this installation
-  const channelTypes = useMemo(() => {
-    const types = new Set<string>();
-    for (const ch of channels) {
-      if (ch.type) types.add(ch.type);
-    }
-    return Array.from(types);
-  }, [channels]);
-
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-col gap-2.5 border-b px-4 pt-3.5 pb-3">
@@ -395,15 +386,24 @@ export function ConversationList({ channels, timezone, initialNow, canConnectCha
             >
               Todas
             </button>
-            {channelTypes.map((type) => {
-              const label =
-                type === "whatsapp" ? "WhatsApp" : type === "email" ? "Email" : type === "web_chat" ? "Web Landing" : type === "instagram" ? "Instagram" : type;
-              const active = query.channelType === type;
+            {[
+              { id: "whatsapp", label: "WhatsApp" },
+              { id: "email", label: "Email" },
+              { id: "web_chat", label: "Web Landing" },
+              { id: "call", label: "Llamadas" },
+              { id: "sms", label: "SMS" },
+              { id: "instagram", label: "Instagram" },
+            ].map((pill) => {
+              const active =
+                query.channelType === pill.id ||
+                (pill.id === "call" && query.channelType === "phone_vapi") ||
+                (pill.id === "sms" && query.channelType === "sms_zadarma") ||
+                (pill.id === "web_chat" && query.channelType === "webchat");
               return (
                 <button
-                  key={type}
+                  key={pill.id}
                   type="button"
-                  onClick={() => navigate({ ...query, channelType: active ? null : type, channelId: null })}
+                  onClick={() => navigate({ ...query, channelType: active ? null : pill.id, channelId: null })}
                   className={cn(
                     "rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors",
                     active
@@ -411,7 +411,7 @@ export function ConversationList({ channels, timezone, initialNow, canConnectCha
                       : "border-border bg-background text-muted-foreground hover:bg-muted",
                   )}
                 >
-                  {label}
+                  {pill.label}
                 </button>
               );
             })}

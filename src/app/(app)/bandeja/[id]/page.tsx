@@ -19,6 +19,7 @@ import { UnconfirmedIdentityNotice } from "./_identity/unconfirmed-notice";
 import { sendEmailAttachmentAction, sendEmailReplyAction } from "./_email/actions";
 import { EmailReplyInfo } from "./_email/reply-info";
 import { EmailThreadProvider } from "./_email/thread-context";
+import { CallDetailBanner, SmsDetailBanner } from "./_components/call-banner";
 import { EmailThreadHeader } from "./_email/thread-header";
 import { InstagramWindowNotice } from "./_instagram/window-notice";
 import { loadConversationScreen } from "./_lib/load";
@@ -79,6 +80,8 @@ export default async function ConversationPage({ params }: PageProps) {
           now={now}
         />
         {conversation.openHandoff ? <HandoffNotice handoff={conversation.openHandoff} timezone={timezone} now={now} /> : null}
+        {conversation.channel.type === "phone_vapi" ? <CallDetailBanner metadata={conversation.metadata} summary={conversation.summary} /> : null}
+        {conversation.channel.type === "sms_zadarma" ? <SmsDetailBanner metadata={conversation.metadata} /> : null}
         {email ? <EmailThreadHeader thread={email} /> : null}
         <EmailThreadProvider key={`email-${conversation.id}`} thread={email}>
           <RetryWindowProvider channelType={conversation.channel.type} closed={serviceWindow !== null && !serviceWindow.open}>

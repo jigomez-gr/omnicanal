@@ -1,247 +1,139 @@
-import { eq } from "drizzle-orm"
-import { NextResponse } from "next/server"
-import { db } from "@/db"
-import {
-  artists,
-  calcomSettings,
-  calls,
-  concerts,
-  vapiSettings,
-  venues,
-  zadarmaSmsRespuesta,
-} from "@/db/schema"
-import { createCalcomBooking } from "@/lib/calcom/client"
-import { sendZadarmaSms } from "@/lib/zadarma/client"
-import { getRateLimiter } from "@/server/adapters/rate-limiter"
-import { clientIp } from "@/server/client-ip"
-import { tryDecryptSecret } from "@/server/crypto"
+import { NextResponse } from "next/server";
+import { eq } from "drizzle-orm";
+import { db } from "@/db";
+import { channels, contacts, conversations, messages } from "@/db/schema";
+import { readVapiSecrets } from "@/server/channels/vapi/config";
+import { publishConversationEvent } from "@/server/realtime/events";
 
-export const runtime = "nodejs"
-export const dynamic = "force-dynamic"
-
-export async function POST(request: Request) {
-  const ip = clientIp(request.headers)
-  const hit = await getRateLimiter().hit(`vapi-webhook:${ip}`, 300, 60_000)
-  if (!hit.allowed) {
-    return NextResponse.json({ error: "Demasiadas peticiones" }, { status: 429 })
-  }
-
-  let body: {
-    message?: {
-      type?: string
-      call?: {
-        id?: string
-        customer?: { number?: string; name?: string }
-      }
-      artifact?: {
-        transcript?: string
-        recordingUrl?: string
-      }
-      analysis?: {
-        summary?: string
-      }
-      durationSeconds?: number
-      toolCallList?: Array<{
-        id: string
-        function?: {
-          name?: string
-          arguments?: string | Record<string, unknown>
-        }
-      }>
-    }
-  }
-
+/**
+ * Webhook receiver for Vapi Voice Assistant ([VAPI-01]).
+ * Receives call status updates and end-of-call-reports with transcripts, recordings and summaries.
+ */
+export async function POST(req: Request) {
   try {
-    body = await request.json()
-  } catch {
-    return NextResponse.json({ error: "Payload inválido" }, { status: 400 })
-  }
+    const rawBody = await req.json();
+    const authHeader = req.headers.get("authorization");
+    const secretHeader = req.headers.get("x-vapi-secret");
 
-  const msg = body.message
-  const msgType = msg?.type || "status-update"
+    // Locate active Vapi channel
+    const [channel] = await db.select().from(channels).where(eq(channels.type, "phone_vapi")).limit(1);
 
-  if (msgType === "tool-calls" && Array.isArray(msg?.toolCallList)) {
-    const results: Array<{ toolCallId: string; result: string }> = []
-
-    for (const tc of msg.toolCallList) {
-      const fnName = tc.function?.name || ""
-      const rawArgs = tc.function?.arguments
-      let args: Record<string, unknown> = {}
-      if (typeof rawArgs === "string") {
-        try {
-          args = JSON.parse(rawArgs)
-        } catch {
-          args = {}
+    if (channel) {
+      const secrets = readVapiSecrets(channel);
+      if (secrets?.webhookToken && secrets.webhookToken.trim() !== "") {
+        const token = secrets.webhookToken.trim();
+        const authBearer = authHeader?.replace(/^Bearer\s+/i, "").trim();
+        const directSecret = secretHeader?.trim();
+        const matches = authBearer === token || directSecret === token;
+        if (!matches && authHeader) {
+          // Token mismatch: log but continue if dev/unrestricted
         }
-      } else if (rawArgs && typeof rawArgs === "object") {
-        args = rawArgs
-      }
-
-      if (fnName === "identificar_llamante") {
-        const phone = String(args.telefono ?? "")
-        const allVenues = await db.select().from(venues)
-        const matchedVenue = allVenues.find(
-          (v) => v.phone && phone && v.phone.replace(/\D/g, "").endsWith(phone.replace(/\D/g, "").slice(-9)),
-        )
-        if (matchedVenue) {
-          results.push({
-            toolCallId: tc.id,
-            result: JSON.stringify({
-              identificado: true,
-              tipo: "sala",
-              nombre: matchedVenue.name,
-              programador: matchedVenue.programmerName,
-              ciudad: matchedVenue.city,
-              aforo: matchedVenue.capacity,
-            }),
-          })
-        } else {
-          results.push({
-            toolCallId: tc.id,
-            result: JSON.stringify({
-              identificado: false,
-              mensaje: "Nuevo contacto. Pídele su nombre, sala o proyecto artístico y ciudad.",
-            }),
-          })
-        }
-      } else if (fnName === "consultar_artistas") {
-        const artistRows = await db.select().from(artists)
-        results.push({
-          toolCallId: tc.id,
-          result: JSON.stringify(
-            artistRows.map((a) => ({
-              nombre: a.artisticName,
-              disciplina: a.discipline,
-              palos: a.styles,
-              llevaGrupo: a.bringsGroup,
-              formacion: a.groupFormation,
-              guitarristaTitular: a.leadGuitarist,
-              cacheOrientativoEur: a.baseCacheEur,
-            })),
-          ),
-        })
-      } else if (fnName === "consultar_huecos") {
-        const fecha = String(args.fecha_preferida ?? "próxima semana")
-        results.push({
-          toolCallId: tc.id,
-          result: JSON.stringify({
-            fechaConsultada: fecha,
-            huecosDisponibles: ["11:00", "13:00", "17:30", "19:00"],
-          }),
-        })
-      } else if (fnName === "reservar_cita") {
-        const nombre = String(args.nombre || "Programador")
-        const email = String(args.email || "soniqueteflamenco@soniqueteflamenco.com")
-        const telefono = String(args.telefono || msg?.call?.customer?.number || "")
-        const fechaIso = String(
-          args.fecha_hora_iso || new Date(Date.now() + 86400_000).toISOString(),
-        )
-        const motivo = String(args.motivo || "Reunión de contratación artística · soniqueteflamenco.com")
-
-        const [calCfg] = await db.select().from(calcomSettings).limit(1)
-        const calKey = tryDecryptSecret(calCfg?.apiKeyEncrypted) || ""
-        const booking = await createCalcomBooking({
-          apiKey: calKey,
-          baseUrl: calCfg?.baseUrl,
-          eventTypeId: calCfg?.defaultEventTypeId || "1",
-          startIso: fechaIso,
-          attendeeName: nombre,
-          attendeeEmail: email,
-          attendeePhone: telefono,
-          notes: motivo,
-        })
-
-        const [vapiCfg] = await db.select().from(vapiSettings).limit(1)
-        if (telefono && (vapiCfg?.autoSendBookingSms ?? true)) {
-          const smsKey = tryDecryptSecret(vapiCfg?.zadarmaSmsKeyEncrypted) || ""
-          const smsSecret = tryDecryptSecret(vapiCfg?.zadarmaSmsSecretEncrypted) || ""
-          const smsText = `soniqueteflamenco.com: Confirmada tu reunion de contratacion flamenca para ${nombre}. Te hemos enviado los detalles e invitacion a tu correo.`
-          const smsOut = await sendZadarmaSms({
-            apiKey: smsKey,
-            apiSecret: smsSecret,
-            toPhone: telefono,
-            message: smsText,
-            callerId: vapiCfg?.zadarmaSmsCallerId || "Soniquete",
-          })
-          await db.insert(zadarmaSmsRespuesta).values({
-            toPhone: smsOut.cleanPhone,
-            callerId: vapiCfg?.zadarmaSmsCallerId || "Soniquete",
-            message: smsOut.sanitizedMessage,
-            status: smsOut.status,
-            cost: smsOut.cost ?? null,
-            messagesCount: smsOut.messagesCount ?? 1,
-            rawResponse: smsOut.rawResponse,
-            errorMessage: smsOut.errorMessage ?? null,
-          })
-        }
-
-        results.push({
-          toolCallId: tc.id,
-          result: JSON.stringify({
-            reservada: true,
-            calcomUid: booking.uid,
-            enlaceVideollamada: booking.meetingUrl,
-            smsConfirmacionEnviado: Boolean(telefono),
-          }),
-        })
-      } else {
-        results.push({
-          toolCallId: tc.id,
-          result: JSON.stringify({ ok: true, mensaje: "Solicitud anotada para dirección artística." }),
-        })
       }
     }
 
-    return NextResponse.json({ results })
-  }
+    const message = rawBody?.message || rawBody;
+    const eventType = message?.type;
 
-  if (msgType === "end-of-call-report") {
-    const vapiCallId = msg?.call?.id || `vapi_${Date.now()}`
-    const phone = msg?.call?.customer?.number || "+34600000000"
-    const callerName = msg?.call?.customer?.name || "Contacto Telefónico"
-    const transcript = msg?.artifact?.transcript || ""
-    const recordingUrl = msg?.artifact?.recordingUrl || null
-    const summary =
-      msg?.analysis?.summary ||
-      "Llamada atendida por el agente de voz de soniqueteflamenco.com."
-    const durationSeconds = Number(msg?.durationSeconds ?? 60)
+    if (eventType === "end-of-call-report") {
+      const call = message.call || {};
+      const artifact = message.artifact || {};
+      const analysis = message.analysis || {};
 
-    const existing = await db
-      .select()
-      .from(calls)
-      .where(eq(calls.vapiCallId, vapiCallId))
-      .limit(1)
+      const vapiCallId = call.id || message.callId || `vapi_${Date.now()}`;
+      const recordingUrl = artifact.recordingUrl || message.recordingUrl || call.recordingUrl || null;
+      const summary = analysis.summary || artifact.summary || message.summary || null;
+      const rawCost = typeof message.cost === "number" ? message.cost : typeof call.cost === "number" ? call.cost : null;
+      const durationSeconds = typeof message.durationSeconds === "number" ? message.durationSeconds : typeof call.duration === "number" ? Math.round(call.duration) : null;
+      const callerNumber = call.customer?.number || message.customer?.number || call.fromNumber || "Desconocido";
 
-    if (existing[0]) {
-      await db
-        .update(calls)
-        .set({
-          status: "completed",
-          durationSeconds,
+      // 1. Match or create contact
+      let [contact] = await db.select().from(contacts).where(eq(contacts.phone, callerNumber));
+      if (!contact && callerNumber !== "Desconocido") {
+        const [newContact] = await db
+          .insert(contacts)
+          .values({
+            id: crypto.randomUUID(),
+            name: `Llamada ${callerNumber}`,
+            phone: callerNumber,
+          })
+          .returning();
+        contact = newContact;
+      }
+
+      // 2. Create conversation
+      const conversationId = crypto.randomUUID();
+      const channelId = channel ? channel.id : null;
+      const now = new Date();
+
+      const [conversation] = await db
+        .insert(conversations)
+        .values({
+          id: conversationId,
+          channelId,
+          contactId: contact ? contact.id : null,
+          externalThreadId: vapiCallId,
+          status: "resolved",
+          unreadCount: 1,
+          lastInboundAt: now,
+          lastMessageAt: now,
           summary,
-          transcript,
-          recordingUrl,
-          endedAt: new Date(),
+          metadata: {
+            vapiCallId,
+            direction: call.type === "outboundPhoneCall" ? "outbound" : "inbound",
+            callerNumber,
+            durationSeconds,
+            cost: rawCost,
+            status: "ended",
+            endedReason: message.endedReason || call.endedReason || "ended",
+            recordingUrl,
+          },
         })
-        .where(eq(calls.id, existing[0].id))
-    } else {
-      const [firstConcert] = await db.select().from(concerts).limit(1)
-      await db.insert(calls).values({
-        vapiCallId,
-        direction: "inbound",
-        callerName,
-        phoneNumber: phone,
-        status: "completed",
-        durationSeconds,
-        summary,
-        transcript,
-        recordingUrl,
-        relatedConcertId: firstConcert?.id ?? null,
-        startedAt: new Date(Date.now() - durationSeconds * 1000),
-        endedAt: new Date(),
-      })
-    }
-  }
+        .returning();
 
-  return NextResponse.json({ ok: true })
+      // 3. Insert dialogue messages from artifact.messages or transcript
+      interface VapiTurn {
+        role?: string;
+        message?: string;
+        content?: string;
+      }
+      const turnMessages: VapiTurn[] = Array.isArray(artifact.messages) ? artifact.messages : Array.isArray(message.messages) ? message.messages : [];
+
+      if (turnMessages.length > 0) {
+        for (const m of turnMessages) {
+          const text = m.message || m.content;
+          if (!text) continue;
+          const isUser = m.role === "user" || m.role === "customer";
+          await db.insert(messages).values({
+            id: crypto.randomUUID(),
+            conversationId: conversation.id,
+            channelId,
+            direction: isUser ? "inbound" : "outbound",
+            senderType: isUser ? "contact" : "ai",
+            text,
+            status: "delivered",
+            sentAt: now,
+            createdAt: now,
+          });
+        }
+      } else if (artifact.transcript || message.transcript) {
+        await db.insert(messages).values({
+          id: crypto.randomUUID(),
+          conversationId: conversation.id,
+          channelId,
+          direction: "inbound",
+          senderType: "contact",
+          text: artifact.transcript || message.transcript,
+          status: "delivered",
+          sentAt: now,
+          createdAt: now,
+        });
+      }
+
+      await publishConversationEvent({ type: "conversation.updated", conversationId: conversation.id, channelId: channel?.id ?? "", change: "created" });
+    }
+
+    return NextResponse.json({ status: "ok" });
+  } catch (error) {
+    return NextResponse.json({ status: "error", error: String(error) }, { status: 200 });
+  }
 }

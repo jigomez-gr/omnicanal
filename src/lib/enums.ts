@@ -20,10 +20,10 @@ export const SECTORS = [
 ] as const;
 export type Sector = (typeof SECTORS)[number];
 
-export const CHANNEL_TYPES = ["whatsapp", "email_gmail", "email_outlook", "email_imap", "webchat", "telegram", "instagram"] as const;
+export const CHANNEL_TYPES = ["whatsapp", "email_gmail", "email_outlook", "email_imap", "webchat", "telegram", "instagram", "phone_vapi", "sms_zadarma"] as const;
 export type ChannelType = (typeof CHANNEL_TYPES)[number];
 /** What a baja applies to ([CTO-09]): every number, bot or mailbox of that kind. The three email types are «correo». */
-export const CHANNEL_KINDS = ["whatsapp", "email", "webchat", "telegram", "instagram"] as const;
+export const CHANNEL_KINDS = ["whatsapp", "email", "webchat", "telegram", "instagram", "phone", "sms"] as const;
 export type ChannelKind = (typeof CHANNEL_KINDS)[number];
 export const CHANNEL_KIND_OF: Record<ChannelType, ChannelKind> = {
   whatsapp: "whatsapp",
@@ -33,6 +33,8 @@ export const CHANNEL_KIND_OF: Record<ChannelType, ChannelKind> = {
   webchat: "webchat",
   telegram: "telegram",
   instagram: "instagram",
+  phone_vapi: "phone",
+  sms_zadarma: "sms",
 };
 export const CHANNEL_STATUSES = ["draft", "connecting", "connected", "error", "disabled"] as const;
 export type ChannelStatus = (typeof CHANNEL_STATUSES)[number];

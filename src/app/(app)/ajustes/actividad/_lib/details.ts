@@ -192,6 +192,8 @@ const CHANNEL_TYPE_NAMES: Record<ChannelType, string> = {
   email_imap: "Correo (IMAP/SMTP)",
   webchat: "Chat web",
   telegram: "Telegram",
+  phone_vapi: "Llamadas (Vapi)",
+  sms_zadarma: "SMS (Zadarma)",
 };
 
 function labelsOf<V>(source: Record<string, V>, label: (value: V) => string): Record<string, string> {

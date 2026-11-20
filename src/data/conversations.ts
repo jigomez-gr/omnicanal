@@ -122,7 +122,19 @@ export async function listConversations(actor: Actor, input: unknown = {}): Prom
   const now = new Date();
   const conditions: SQL[] = [...scope];
   if (filters.channelId) conditions.push(eq(conversations.channelId, filters.channelId));
-  if (filters.channelType && filters.channelType !== "all") conditions.push(eq(channels.type, filters.channelType as ChannelType));
+  if (filters.channelType && filters.channelType !== "all") {
+    if (filters.channelType === "call" || filters.channelType === "phone_vapi") {
+      conditions.push(eq(channels.type, "phone_vapi"));
+    } else if (filters.channelType === "sms" || filters.channelType === "sms_zadarma") {
+      conditions.push(eq(channels.type, "sms_zadarma"));
+    } else if (filters.channelType === "email") {
+      conditions.push(inArray(channels.type, ["email_gmail", "email_outlook", "email_imap"]));
+    } else if (filters.channelType === "web_chat" || filters.channelType === "webchat") {
+      conditions.push(eq(channels.type, "webchat"));
+    } else {
+      conditions.push(eq(channels.type, filters.channelType as ChannelType));
+    }
+  }
   if (filters.status) conditions.push(eq(conversations.status, filters.status));
   if (filters.assignee === "me") conditions.push(eq(conversations.assignedUserId, actor.userId));
   else if (filters.assignee === "unassigned") conditions.push(isNull(conversations.assignedUserId));
@@ -290,6 +302,7 @@ export type ConversationDetail = Omit<ConversationListItem, "lastMessage" | "urg
   summary: string | null;
   lastInboundAt: Date | null;
   createdAt: Date;
+  metadata: Record<string, unknown>;
 };
 
 /** One conversation for its screen. «Sin permiso» when it does not exist or is not the person's ([PER-02]). */
@@ -346,6 +359,7 @@ export async function getConversation(actor: Actor, conversationId: string): Pro
     summary: conversation.summary,
     lastInboundAt: conversation.lastInboundAt,
     createdAt: conversation.createdAt,
+    metadata: conversation.metadata ?? {},
   };
 }
 

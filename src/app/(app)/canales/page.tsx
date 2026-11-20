@@ -36,6 +36,14 @@ function channelAddress(channel: ChannelDetail): string | null {
     const username = readInstagramConfig(channel.config).username;
     return username ? instagramHandle(username) : null;
   }
+  if (channel.type === "phone_vapi") {
+    const cfg = channel.config as Record<string, unknown>;
+    return (cfg?.phoneNumber as string) || (cfg?.assistantId ? `Asistente: ${cfg.assistantId}` : "Llamadas de voz");
+  }
+  if (channel.type === "sms_zadarma") {
+    const cfg = channel.config as Record<string, unknown>;
+    return (cfg?.senderId as string) ? `Remitente: ${cfg.senderId}` : "Mensajería SMS";
+  }
   return readEmailConfig(channel.config).emailAddress ?? null;
 }
 
@@ -60,7 +68,7 @@ export default async function ChannelsPage({ searchParams }: PageProps) {
   const addresses = new Map(
     await Promise.all(
       channels
-        .filter((channel) => channel.type === "webchat" || channel.type === "telegram" || channel.type === "instagram" || isEmailChannelType(channel.type))
+        .filter((channel) => channel.type === "webchat" || channel.type === "telegram" || channel.type === "instagram" || channel.type === "phone_vapi" || channel.type === "sms_zadarma" || isEmailChannelType(channel.type))
         .map(async (channel) => {
           const detail = await getChannel(actor, channel.id);
           return [channel.id, channelAddress(detail)] as const;

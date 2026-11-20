@@ -64,6 +64,7 @@ describe("Conversation and list export utilities", () => {
     window: null,
     summary: null,
     lastInboundAt: null,
+    metadata: {},
   };
 
   const dummyMessages: MessageItem[] = [

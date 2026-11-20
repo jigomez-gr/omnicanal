@@ -12,6 +12,8 @@ import { demoAdapter } from "./demo-adapter";
 import { gmailAdapter, imapAdapter, outlookAdapter } from "./email/adapter";
 import { instagramAdapter } from "./instagram/adapter";
 import { telegramAdapter } from "./telegram/adapter";
+import { vapiAdapter } from "./vapi/adapter";
+import { zadarmaAdapter } from "./zadarma/adapter";
 import type { ChannelAdapter, ChannelCapabilities, ChannelRecord } from "./types";
 import { webchatAdapter } from "./webchat-adapter";
 import { whatsappAdapter } from "./whatsapp/adapter";
@@ -47,6 +49,8 @@ registerChannelAdapter(outlookAdapter);
 registerChannelAdapter(imapAdapter);
 registerChannelAdapter(telegramAdapter);
 registerChannelAdapter(instagramAdapter);
+registerChannelAdapter(vapiAdapter);
+registerChannelAdapter(zadarmaAdapter);
 
 /** What tells a channel's adapter apart: its type and, for WhatsApp, the way its number is connected. */
 type AdapterKey = Pick<ChannelRecord, "type" | "isDemo"> & { connectionMode?: string | null };
