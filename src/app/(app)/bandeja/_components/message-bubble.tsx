@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Bot, Download, FileText, FlaskConical, Headset, Info, LoaderCircle, RotateCcw, X } from "lucide-react";
+import { BookOpen, Bot, Download, FileArchive, FileSpreadsheet, FileText, FlaskConical, Headset, Info, LoaderCircle, RotateCcw, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { CHANNEL_IDENTITY } from "@/components/channels/channel-identity";
 import { Button } from "@/components/ui/button";
@@ -175,6 +175,17 @@ function AuthorLine({ message, channel, contactName }: { message: MessageItem; c
   );
 }
 
+function DocumentIcon({ fileName }: { fileName: string | null | undefined }) {
+  const name = (fileName ?? "").toLowerCase();
+  if (name.endsWith(".xlsx") || name.endsWith(".xls") || name.endsWith(".csv")) {
+    return <FileSpreadsheet aria-hidden className="size-5 shrink-0 text-emerald-600 dark:text-emerald-400" />;
+  }
+  if (name.endsWith(".zip")) {
+    return <FileArchive aria-hidden className="size-5 shrink-0 text-amber-600 dark:text-amber-400" />;
+  }
+  return <FileText aria-hidden className="size-5 shrink-0 text-sky-600 dark:text-sky-400" />;
+}
+
 function MessageContent({ message, onPrimary }: { message: MessageItem; onPrimary: boolean }) {
   // On the business colour the text keeps its full contrast; elsewhere secondary text is muted.
   const secondary = onPrimary ? "" : "text-muted-foreground";
@@ -185,7 +196,7 @@ function MessageContent({ message, onPrimary }: { message: MessageItem; onPrimar
   // The daily clean-up removed the file ([CUM-05]): a voice note still shows what the customer said ([MED-04]).
   if (!media && withFile && message.mediaRemoved) {
     if (message.contentType === "audio") {
-      return <AudioContent url={null} transcript={message.transcript} failed={message.transcriptionFailed} secondary={secondary} />;
+      return <AudioContent url={null} fileName={null} transcript={message.transcript} failed={message.transcriptionFailed} secondary={secondary} />;
     }
     return (
       <div className="flex flex-col gap-1">
@@ -210,7 +221,7 @@ function MessageContent({ message, onPrimary }: { message: MessageItem; onPrimar
     );
   }
   if (message.contentType === "audio") {
-    return <AudioContent url={media.url} transcript={message.transcript} failed={message.transcriptionFailed} secondary={secondary} />;
+    return <AudioContent url={media.url} fileName={media.fileName} transcript={message.transcript} failed={message.transcriptionFailed} secondary={secondary} />;
   }
   if (message.contentType === "image" || message.contentType === "sticker") {
     return (
@@ -224,6 +235,18 @@ function MessageContent({ message, onPrimary }: { message: MessageItem; onPrimar
     return (
       <div className="flex flex-col gap-2">
         <video controls preload="metadata" src={media.url} className="max-h-60 max-w-60 rounded-lg bg-black" aria-label="Vídeo" />
+        <a
+          href={media.url}
+          download={media.fileName ?? "video.mp4"}
+          className={cn(
+            "flex max-w-60 items-center justify-between gap-2 rounded-lg border px-3 py-1.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            onPrimary ? "border-primary-foreground/30" : "bg-background text-foreground",
+          )}
+        >
+          <span className="truncate font-medium">{media.fileName ?? "Vídeo"}</span>
+          <Download aria-hidden className="size-3.5 shrink-0" />
+          <span className="sr-only">Descargar vídeo</span>
+        </a>
         {text}
       </div>
     );
@@ -238,7 +261,7 @@ function MessageContent({ message, onPrimary }: { message: MessageItem; onPrimar
           onPrimary ? "border-primary-foreground/30" : "bg-background text-foreground",
         )}
       >
-        <FileText aria-hidden className="size-5 shrink-0" />
+        <DocumentIcon fileName={media.fileName} />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-sm font-medium">{media.fileName ?? "Documento"}</span>
           <span className={cn("text-xs", secondary)}>{media.size !== null ? formatFileSize(media.size) : (media.mimeType ?? "")}</span>
@@ -255,13 +278,36 @@ function MessageContent({ message, onPrimary }: { message: MessageItem; onPrimar
  * Player and, underneath, the transcript the agent received ([BAN-06], [MED-04]); folded when long. Without `url` the
  * clean-up removed the audio: the transcript stays.
  */
-function AudioContent({ url, transcript, failed, secondary }: { url: string | null; transcript: string | null; failed: boolean; secondary: string }) {
+function AudioContent({
+  url,
+  fileName,
+  transcript,
+  failed,
+  secondary,
+}: {
+  url: string | null;
+  fileName: string | null | undefined;
+  transcript: string | null;
+  failed: boolean;
+  secondary: string;
+}) {
   const [expanded, setExpanded] = useState(false);
   const long = (transcript?.length ?? 0) > LONG_TRANSCRIPT;
   return (
     <div className="flex flex-col gap-2">
       {url ? (
-        <audio controls preload="metadata" src={url} className="w-64 max-w-full" aria-label="Nota de voz" />
+        <div className="flex items-center gap-2">
+          <audio controls preload="metadata" src={url} className="w-64 max-w-full" aria-label="Audio" />
+          <a
+            href={url}
+            download={fileName ?? "audio.mp3"}
+            title="Descargar audio"
+            className="inline-flex size-8 shrink-0 items-center justify-center rounded-md border text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <Download aria-hidden className="size-4" />
+            <span className="sr-only">Descargar audio</span>
+          </a>
+        </div>
       ) : (
         <p className={cn("text-xs", secondary)}>{AUDIO_REMOVED_TEXT}</p>
       )}

@@ -85,6 +85,13 @@ const EXTENSIONS: Record<string, string> = {
   "video/webm": ".webm",
   "application/pdf": ".pdf",
   "text/plain": ".txt",
+  "text/csv": ".csv",
+  "application/zip": ".zip",
+  "application/x-zip-compressed": ".zip",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+  "application/vnd.ms-excel": ".xls",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+  "application/msword": ".doc",
 };
 
 /** Extension of the storage key: from the type, never from the customer's file name. Empty when unknown. */

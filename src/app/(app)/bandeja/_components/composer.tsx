@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, FileText, ImageIcon, LoaderCircle, MessageSquareText, Paperclip, SendHorizontal, StickyNote, X } from "lucide-react";
+import { Eye, FileArchive, FileSpreadsheet, FileText, ImageIcon, LoaderCircle, MessageSquareText, Music, Paperclip, SendHorizontal, StickyNote, Video, X } from "lucide-react";
 import { useId, useRef, useState, useTransition, type ChangeEvent, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,28 @@ const MAX_NOTE = 4_000;
 const MAX_ATTACHMENT_BYTES = 3.5 * 1024 * 1024;
 const MAX_CAPTION = 1_024;
 const IMAGE_TYPES = "image/png,image/jpeg,image/webp";
-const PDF_TYPE = "application/pdf";
+const DOCUMENT_TYPES = ".pdf,.xlsx,.csv,.docx,.zip,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/csv,application/zip";
+const MEDIA_TYPES = ".mp3,.mp4,audio/mpeg,video/mp4";
+
+function AttachmentChipIcon({ file }: { file: File }) {
+  const name = file.name.toLowerCase();
+  if (name.endsWith(".xlsx") || name.endsWith(".xls") || name.endsWith(".csv")) {
+    return <FileSpreadsheet aria-hidden className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />;
+  }
+  if (name.endsWith(".zip")) {
+    return <FileArchive aria-hidden className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />;
+  }
+  if (name.endsWith(".mp3") || file.type.startsWith("audio/")) {
+    return <Music aria-hidden className="size-4 shrink-0 text-purple-600 dark:text-purple-400" />;
+  }
+  if (name.endsWith(".mp4") || file.type.startsWith("video/")) {
+    return <Video aria-hidden className="size-4 shrink-0 text-rose-600 dark:text-rose-400" />;
+  }
+  if (name.endsWith(".docx") || name.endsWith(".doc") || file.type === "application/pdf" || name.endsWith(".pdf")) {
+    return <FileText aria-hidden className="size-4 shrink-0 text-sky-600 dark:text-sky-400" />;
+  }
+  return <ImageIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />;
+}
 
 type Mode = "reply" | "note";
 
@@ -70,7 +91,13 @@ export function Composer(props: ComposerProps) {
   const [pending, startTransition] = useTransition();
   const [file, setFile] = useState<File | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-  const accept = [attachments.images ? IMAGE_TYPES : null, attachments.documents ? PDF_TYPE : null].filter(Boolean).join(",");
+  const accept = [
+    attachments.images ? IMAGE_TYPES : null,
+    attachments.documents ? DOCUMENT_TYPES : null,
+    attachments.documents || attachments.images ? MEDIA_TYPES : null,
+  ]
+    .filter(Boolean)
+    .join(",");
 
   if (!canReply && !canNote) {
     return (
@@ -184,7 +211,7 @@ export function Composer(props: ComposerProps) {
           </Label>
           {attaching && file ? (
             <p className="flex w-fit max-w-full items-center gap-2 rounded-lg border bg-muted px-2 py-1 text-sm">
-              {file.type === PDF_TYPE ? <FileText aria-hidden className="size-4 shrink-0" /> : <ImageIcon aria-hidden className="size-4 shrink-0" />}
+              <AttachmentChipIcon file={file} />
               <span className="truncate">{file.name}</span>
               <span className="shrink-0 text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
               <Button type="button" variant="ghost" size="icon-xs" aria-label="Quitar el archivo" onClick={() => setFile(null)} disabled={pending}>
@@ -200,7 +227,7 @@ export function Composer(props: ComposerProps) {
                   type="button"
                   variant="outline"
                   size="icon"
-                  aria-label={attachments.documents ? "Adjuntar una imagen o un PDF" : "Adjuntar una imagen"}
+                  aria-label="Adjuntar un archivo (imagen, documento, audio o vídeo)"
                   className="shrink-0 pointer-coarse:size-11"
                   onClick={() => fileInput.current?.click()}
                   disabled={pending}

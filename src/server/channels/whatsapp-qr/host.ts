@@ -29,7 +29,7 @@ export const qrHostRequestSchema = z.discriminatedUnion("action", [
       action: z.literal("send"),
       channelId,
       jid,
-      contentType: z.enum(["text", "image", "document", "audio"]),
+      contentType: z.enum(["text", "image", "document", "audio", "video"]),
       text: z.string().max(70_000).nullable(),
       media: z.object({ fileKey: z.string().max(500).refine(isValidFileKey), mimeType: z.string().max(200).nullish(), fileName: z.string().max(255).nullish() }).nullable(),
     })

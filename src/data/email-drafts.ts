@@ -396,11 +396,11 @@ export async function sendEmailReply(actor: Actor, input: unknown, file?: EmailR
   return { messageId: sent.messageId, status: sent.status, error: sent.error, aiPausedUntil };
 }
 
-/** An image (PNG, JPG or WebP) or a PDF up to the inbox's limit, told by its bytes (the name is never trusted). */
+/** An attachment up to the inbox's limit, told by its bytes and name. */
 function checkedFile(file: EmailReplyFile) {
   if (file.bytes.byteLength === 0) throw new ValidationError(undefined, { file: ["Elige un archivo."] });
   if (file.bytes.byteLength > MAX_ATTACHMENT_BYTES) throw new ValidationError(undefined, { file: ["El archivo es demasiado grande. Como mucho, 3,5 MB."] });
-  const detected = detectAttachment(file.bytes);
-  if (!detected) throw new ValidationError(undefined, { file: ["Solo se pueden adjuntar imágenes (JPG, PNG o WebP) y documentos PDF."] });
+  const detected = detectAttachment(file.bytes, file.fileName);
+  if (!detected) throw new ValidationError(undefined, { file: ["Solo se pueden adjuntar imágenes (JPG, PNG o WebP), documentos (PDF, XLSX, DOCX, CSV, ZIP), audios (MP3) y vídeos (MP4)."] });
   return { ...detected, bytes: file.bytes, fileName: file.fileName };
 }

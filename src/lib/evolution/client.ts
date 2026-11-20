@@ -153,7 +153,7 @@ export type SendMediaParams = {
   instanceName?: string;
   number: string;
   media: string; // base64 or URL
-  mediatype: "image" | "document" | "audio";
+  mediatype: "image" | "document" | "audio" | "video";
   mimetype?: string;
   fileName?: string;
   caption?: string;

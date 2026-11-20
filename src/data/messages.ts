@@ -18,6 +18,7 @@ import { replyDedupeKey } from "@/server/engine/schedule";
 import { AuthError, ConflictError, parseInput, ValidationError } from "@/server/errors";
 import { recordFirstHumanResponse } from "@/server/handoff/service";
 import { mediaMetadataOf } from "@/server/media/metadata";
+import { detectAudioMimeType } from "@/server/media/limits";
 import { storeInboundMedia } from "@/server/media/store";
 import { resendOutbound, sendDraft, sendOutbound, type SendOutboundResult } from "@/server/outbound/send";
 import { publishConversationEvent } from "@/server/realtime/events";
@@ -224,12 +225,63 @@ export const sendAttachmentSchema = z
   .strict();
 
 const PDF_SIGNATURE = [0x25, 0x50, 0x44, 0x46, 0x2d]; // %PDF-
+const ZIP_SIGNATURE = [0x50, 0x4b, 0x03, 0x04]; // PK..
 
-/** An image (PNG, JPG or WebP) or a PDF, told by its first bytes: the name and declared type are never trusted. */
-export function detectAttachment(bytes: Uint8Array): { kind: "image" | "document"; mimeType: string } | null {
+export type DetectedAttachment = {
+  kind: "image" | "document" | "audio" | "video";
+  mimeType: string;
+};
+
+/**
+ * Detects attachment kind and MIME type from file bytes and optional file name.
+ * Supports images (PNG, JPG, WebP), documents (PDF, XLSX, DOCX, CSV, ZIP), audio (MP3) and video (MP4).
+ */
+export function detectAttachment(bytes: Uint8Array, fileName?: string | null): DetectedAttachment | null {
+  const name = (fileName ?? "").toLowerCase().trim();
+
+  // 1. Image
   const image = detectLogoFormat(bytes);
   if (image) return { kind: "image", mimeType: image.contentType };
-  if (bytes.length >= PDF_SIGNATURE.length && PDF_SIGNATURE.every((value, index) => bytes[index] === value)) return { kind: "document", mimeType: "application/pdf" };
+
+  // 2. PDF
+  if (bytes.length >= PDF_SIGNATURE.length && PDF_SIGNATURE.every((value, index) => bytes[index] === value)) {
+    return { kind: "document", mimeType: "application/pdf" };
+  }
+  if (name.endsWith(".pdf")) return { kind: "document", mimeType: "application/pdf" };
+
+  // 3. Video (MP4)
+  if (name.endsWith(".mp4")) {
+    return { kind: "video", mimeType: "video/mp4" };
+  }
+
+  // 4. Audio (MP3 / WAV / OGG / etc.)
+  const audioMime = detectAudioMimeType(bytes);
+  if (name.endsWith(".mp3") || (audioMime && audioMime !== "audio/mp4")) {
+    return { kind: "audio", mimeType: name.endsWith(".mp3") ? "audio/mpeg" : (audioMime ?? "audio/mpeg") };
+  }
+  if (audioMime === "audio/mp4") {
+    // MP4 container without explicit audio name defaults to video
+    return { kind: "video", mimeType: "video/mp4" };
+  }
+
+  // 5. Office OpenXML (.xlsx, .docx) & ZIP
+  const isZip = (bytes.length >= ZIP_SIGNATURE.length && ZIP_SIGNATURE.every((v, i) => bytes[i] === v)) ||
+    name.endsWith(".zip") || name.endsWith(".xlsx") || name.endsWith(".docx");
+  if (isZip) {
+    if (name.endsWith(".xlsx")) {
+      return { kind: "document", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" };
+    }
+    if (name.endsWith(".docx")) {
+      return { kind: "document", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" };
+    }
+    return { kind: "document", mimeType: "application/zip" };
+  }
+
+  // 6. CSV
+  if (name.endsWith(".csv")) {
+    return { kind: "document", mimeType: "text/csv" };
+  }
+
   return null;
 }
 
@@ -249,12 +301,22 @@ export async function sendHumanAttachment(
   await assertCanSendNow(conversation, now);
   if (file.bytes.byteLength === 0) throw new ValidationError(undefined, { file: ["Elige un archivo."] });
   if (file.bytes.byteLength > MAX_ATTACHMENT_BYTES) throw new ValidationError(undefined, { file: ["El archivo es demasiado grande. Como mucho, 3,5 MB."] });
-  const detected = detectAttachment(file.bytes);
-  if (!detected) throw new ValidationError(undefined, { file: ["Solo se pueden adjuntar imágenes (JPG, PNG o WebP) y documentos PDF."] });
+  const detected = detectAttachment(file.bytes, file.fileName);
+  if (!detected) {
+    throw new ValidationError(undefined, {
+      file: ["Solo se pueden adjuntar imágenes (JPG, PNG o WebP), documentos (PDF, XLSX, DOCX, CSV, ZIP), audios (MP3) y vídeos (MP4)."],
+    });
+  }
   const [channel] = await db.select().from(channels).where(eq(channels.id, conversation.channelId));
   const capabilities = defaultCapabilitiesOf(channel);
-  if (detected.kind === "image" ? !capabilities.images : !capabilities.documents) {
-    throw new ValidationError(undefined, { file: [detected.kind === "image" ? "Este canal no admite imágenes." : "Este canal no admite documentos."] });
+  if (detected.kind === "image" && !capabilities.images) {
+    throw new ValidationError(undefined, { file: ["Este canal no admite imágenes."] });
+  }
+  if (detected.kind === "document" && !capabilities.documents) {
+    throw new ValidationError(undefined, { file: ["Este canal no admite documentos."] });
+  }
+  if (detected.kind === "audio" && !capabilities.audio) {
+    throw new ValidationError(undefined, { file: ["Este canal no admite audios."] });
   }
 
   const storage = options.storage ?? getFileStorage();

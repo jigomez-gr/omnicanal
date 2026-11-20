@@ -30,7 +30,7 @@ export type WhatsAppQrAdapterDeps = { storage?: FileStorage; now?: () => Date; /
 
 /** Inbound messages of a conversation looked at for the chat to answer in. */
 const RECENT_INBOUND = 5;
-const SENDABLE: ReadonlySet<string> = new Set(["text", "image", "document", "audio"]);
+const SENDABLE: ReadonlySet<string> = new Set(["text", "image", "document", "audio", "video"]);
 
 const chatJid = (metadata: Record<string, unknown> | null | undefined): string | null => {
   const jid = normalizeJid(typeof metadata?.[QR_JID_METADATA_KEY] === "string" ? (metadata[QR_JID_METADATA_KEY] as string) : null);
@@ -61,7 +61,7 @@ async function jidOfMessage(channelId: string, externalMessageId: string): Promi
 /** What the process that keeps the session needs to send this message: its file goes by its key, never as bytes. */
 function sendRequest(channelId: string, jid: string, message: OutboundMessage): QrHostRequest {
   if (!SENDABLE.has(message.contentType)) throw new ChannelSendError("Este tipo de mensaje no se puede enviar por un número vinculado por código QR.", false);
-  const contentType = message.contentType as "text" | "image" | "document" | "audio";
+  const contentType = message.contentType as "text" | "image" | "document" | "audio" | "video";
   const fileKey = message.media?.fileKey;
   if (contentType !== "text" && !fileKey) throw new ChannelSendError("No se ha encontrado el archivo del mensaje.", false);
   return {
@@ -126,7 +126,7 @@ export function createWhatsAppQrAdapter(deps: WhatsAppQrAdapterDeps = {}): Chann
             const res = await sendEvolutionText({ number: jid, text });
             return { externalId: res.key?.id || `evo-${Date.now()}`, status: "sent", sentAt: deps.now?.() ?? new Date() };
           }
-          if (message.contentType === "image" || message.contentType === "document" || message.contentType === "audio") {
+          if (message.contentType === "image" || message.contentType === "document" || message.contentType === "audio" || message.contentType === "video") {
             const fileKey = message.media?.fileKey;
             if (!fileKey) throw new ChannelSendError("No se ha encontrado el archivo del mensaje.", false);
             const storage = deps.storage ?? getFileStorage();
