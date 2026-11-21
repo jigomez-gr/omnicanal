@@ -24,7 +24,22 @@ function formatDate(date?: Date | string | number | null): string {
 
 function formatChannel(type: string, name?: string | null): string {
   const t = type.toLowerCase();
-  const base = t === "whatsapp" ? "WhatsApp" : t === "email" ? "Email" : t === "instagram" ? "Instagram" : t === "web_chat" ? "Chat Web" : type;
+  const base =
+    t === "whatsapp"
+      ? "WhatsApp"
+      : t === "telegram"
+        ? "Telegram"
+        : t === "instagram"
+          ? "Instagram"
+          : t.startsWith("email")
+            ? "Email"
+            : t === "webchat" || t === "web_chat"
+              ? "Chat Web"
+              : t === "phone_vapi" || t === "call"
+                ? "Llamadas"
+                : t === "sms_zadarma" || t === "sms"
+                  ? "SMS"
+                  : type;
   return name ? `${base} (${name})` : base;
 }
 

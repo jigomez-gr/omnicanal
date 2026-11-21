@@ -29,7 +29,7 @@ import {
   type InboxView,
 } from "../_lib/filters";
 import { ConversationRow } from "./conversation-row";
-import { InboxFilters, type InboxChannel } from "./inbox-filters";
+import { InboxFilters, CHANNEL_TYPE_LABELS, type InboxChannel } from "./inbox-filters";
 import { ListSkeleton } from "./list-skeleton";
 import { useNow } from "./use-now";
 
@@ -178,7 +178,7 @@ export function ConversationList({ channels, timezone, initialNow, canConnectCha
       const filterSummary = [
         query.period !== "all" ? `Periodo: ${query.period}` : null,
         query.readState !== "all" ? `Estado: ${query.readState}` : null,
-        query.channelType ? `Canal: ${query.channelType}` : null,
+        query.channelType ? `Canal: ${CHANNEL_TYPE_LABELS[query.channelType] ?? query.channelType}` : null,
         query.search ? `Búsqueda: ${query.search}` : null,
       ]
         .filter(Boolean)
@@ -393,12 +393,14 @@ export function ConversationList({ channels, timezone, initialNow, canConnectCha
               { id: "call", label: "Llamadas" },
               { id: "sms", label: "SMS" },
               { id: "instagram", label: "Instagram" },
+              { id: "telegram", label: "Telegram" },
             ].map((pill) => {
               const active =
                 query.channelType === pill.id ||
                 (pill.id === "call" && query.channelType === "phone_vapi") ||
                 (pill.id === "sms" && query.channelType === "sms_zadarma") ||
-                (pill.id === "web_chat" && query.channelType === "webchat");
+                (pill.id === "web_chat" && query.channelType === "webchat") ||
+                (pill.id === "telegram" && query.channelType === "telegram");
               return (
                 <button
                   key={pill.id}

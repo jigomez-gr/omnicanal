@@ -135,6 +135,8 @@ export async function listConversations(actor: Actor, input: unknown = {}): Prom
       conditions.push(inArray(channels.type, ["email_gmail", "email_outlook", "email_imap"]));
     } else if (filters.channelType === "web_chat" || filters.channelType === "webchat") {
       conditions.push(eq(channels.type, "webchat"));
+    } else if (filters.channelType === "telegram") {
+      conditions.push(eq(channels.type, "telegram"));
     } else {
       conditions.push(eq(channels.type, filters.channelType as ChannelType));
     }

@@ -132,6 +132,14 @@ describe("filters, search and counts [BAN-02] [BAN-03]", () => {
     expect(await ids({ labels: ["otra"] })).toEqual([]);
   });
 
+  it("filters by channelType including telegram", async () => {
+    const channelTg = (await createChannel({ name: "Telegram Bot", type: "telegram" })).id;
+    const carlos = await createContactWithIdentity("telegram", { name: "Carlos" });
+    const inTg = await createConversation(channelTg, carlos.contact.id, { lastMessageAt: new Date("2026-09-30T11:00:00Z") });
+    expect(await ids({ channelType: "telegram" })).toEqual([inTg.id]);
+    expect(await ids({ channelType: "webchat" })).toEqual([inA.id, inB.id]);
+  });
+
   it("paused conversations are their own mode while the pause lasts [BAN-10]", async () => {
     await db.update(conversations).set({ aiPausedUntil: new Date(Date.now() + 3_600_000), pauseReason: "Ha respondido Olga" }).where(eq(conversations.id, inA.id));
     expect(await ids({ mode: "paused" })).toEqual([inA.id]);

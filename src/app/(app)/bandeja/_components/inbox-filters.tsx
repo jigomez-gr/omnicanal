@@ -19,6 +19,19 @@ export type InboxChannel = { id: string; name: string; type: ChannelType };
 /** Radix Select needs a non-empty value for «any». */
 const ANY = "any";
 
+export const CHANNEL_TYPE_LABELS: Record<string, string> = {
+  whatsapp: "WhatsApp",
+  email: "Email",
+  web_chat: "Web Landing",
+  webchat: "Web Landing",
+  call: "Llamadas",
+  phone_vapi: "Llamadas",
+  sms: "SMS",
+  sms_zadarma: "SMS",
+  instagram: "Instagram",
+  telegram: "Telegram",
+};
+
 const ASSIGNEE_LABELS: Record<InboxAssignee, string> = { me: "Asignadas a mí", unassigned: "Sin asignar" };
 const MODE_LABELS: Record<InboxMode, string> = { ai: "Responde la IA", human: "Atiende una persona", paused: "IA en pausa" };
 
@@ -38,6 +51,7 @@ export function InboxFilters({ query, channels, onChange }: InboxFiltersProps) {
       {count > 0 ? (
         <ul aria-label="Filtros activos" className="flex flex-wrap items-center gap-1.5">
           {query.channelId ? <Chip label={`Canal: ${channelName}`} onRemove={() => set({ channelId: null })} /> : null}
+          {query.channelType ? <Chip label={`Canal: ${CHANNEL_TYPE_LABELS[query.channelType] ?? query.channelType}`} onRemove={() => set({ channelType: null })} /> : null}
           {query.status ? <Chip label={`Estado: ${STATUS_META[query.status].label.toLowerCase()}`} onRemove={() => set({ status: null })} /> : null}
           {query.assignee ? <Chip label={ASSIGNEE_LABELS[query.assignee]} onRemove={() => set({ assignee: null })} /> : null}
           {query.mode ? <Chip label={MODE_LABELS[query.mode]} onRemove={() => set({ mode: null })} /> : null}
@@ -117,7 +131,7 @@ function FiltersPopover({ query, channels, count, set }: FiltersPopoverProps) {
           value={query.channelId ?? ANY}
           anyLabel="Todos los canales"
           options={channels.map((channel) => ({ value: channel.id, label: channelMarkText(channel.type, channel.name) }))}
-          onChange={(value) => set({ channelId: value })}
+          onChange={(value) => set({ channelId: value, channelType: null })}
         />
         <FilterSelect
           id={`${id}-estado`}

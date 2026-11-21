@@ -57,6 +57,12 @@ describe("inbox filters in the URL [BAN-02]", () => {
       searchField: "phone",
       channelType: "whatsapp",
     });
+
+    const telegramQuery = parseInboxQuery(params("tipo_canal=telegram"));
+    expect(telegramQuery.channelType).toBe("telegram");
+    expect(toConversationFilters(telegramQuery)).toEqual({
+      channelType: "telegram",
+    });
   });
 
   it("the quick tabs «Pendientes de humano» and «Mías» win over the same filter", () => {

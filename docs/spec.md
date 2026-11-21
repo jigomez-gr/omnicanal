@@ -1227,8 +1227,8 @@ se da acceso. Nunca habla con clientes. Por qué está hecho así: `docs/decisio
 ### Bandeja
 
 - [BAN-01] La bandeja reúne las conversaciones de todos los canales que el usuario puede ver.
-- [BAN-02] Filtros por canal, estado, asignado, IA o persona, sin leer y etiquetas; buscador por contacto y
-  texto.
+- [BAN-02] Filtros por canal (WhatsApp, Email, Web Landing, Llamadas, SMS, Instagram y Telegram), estado, asignado,
+  IA o persona, sin leer y etiquetas; buscador por contacto y texto.
 - [BAN-03] Tiene contador de no leídos, y lo nuevo aparece sin recargar en 5 s como máximo.
 - [BAN-04] Al abrir una conversación, se marca como leída.
 - [BAN-05] Cada mensaje muestra su canal, su autor (cliente, IA con el nombre del agente, persona con su nombre o
